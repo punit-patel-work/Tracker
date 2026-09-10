@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "Bash(node scripts/validate_palette.js \"#2a78d6,#eb6834\" --mode light --surface \"#ffffff\")",
+      "Bash(node scripts/validate_palette.js \"#3987e5,#d95926\" --mode dark --surface \"#12121f\")",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
