@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/app';
 import { api } from '../lib/api';
-import { fromKg, shiftDays, toKg, todayISO, weightLabel } from '../lib/format';
+import { distanceLabel, fromKg, fromKm, shiftDays, toKg, toKm, todayISO, weightLabel } from '../lib/format';
 import ExercisePicker from '../components/ExercisePicker';
 import * as I from '../components/Icon';
 import type { Entry, Exercise } from '../lib/types';
@@ -144,21 +144,111 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
                       <input
                         className="input"
                         inputMode="numeric"
+                        placeholder="30"
                         value={entry.cardio?.durationMin ?? ''}
                         onChange={(e) =>
                           setEntries((l) =>
-                            l.map((x) =>
-                              x.exerciseId === entry.exerciseId
-                                ? {
-                                    ...x,
-                                    cardio: {
-                                      ...(x.cardio ?? { distanceKm: null, intensity: 'moderate', done: true }),
-                                      durationMin: e.target.value === '' ? null : Number(e.target.value),
-                                      done: true,
-                                    },
-                                  }
-                                : x,
-                            ),
+                            l.map((x) => {
+                              if (x.exerciseId !== entry.exerciseId) return x;
+                              const cur = x.cardio ?? {
+                                durationMin: null,
+                                distanceKm: null,
+                                incline: null,
+                                level: null,
+                                intensity: 'moderate',
+                                done: true,
+                              };
+                              return {
+                                ...x,
+                                cardio: { ...cur, durationMin: e.target.value === '' ? null : Number(e.target.value) },
+                              };
+                            }),
+                          )
+                        }
+                      />
+                    </div>
+                    {ex.isDistanceBased && (
+                      <div className="field">
+                        <label>Distance ({distanceLabel(units)})</label>
+                        <input
+                          className="input"
+                          inputMode="decimal"
+                          placeholder="1.25"
+                          defaultValue={entry.cardio?.distanceKm == null ? '' : String(fromKm(entry.cardio.distanceKm, units))}
+                          onBlur={(e) =>
+                            setEntries((l) =>
+                              l.map((x) => {
+                                if (x.exerciseId !== entry.exerciseId) return x;
+                                const cur = x.cardio ?? {
+                                  durationMin: null,
+                                  distanceKm: null,
+                                  incline: null,
+                                  level: null,
+                                  intensity: 'moderate',
+                                  done: true,
+                                };
+                                return {
+                                  ...x,
+                                  cardio: { ...cur, distanceKm: e.target.value === '' ? null : toKm(Number(e.target.value), units) },
+                                };
+                              }),
+                            )
+                          }
+                        />
+                      </div>
+                    )}
+                    <div className="field">
+                      <label>Incline (%)</label>
+                      <input
+                        className="input"
+                        inputMode="decimal"
+                        placeholder="3.5"
+                        value={entry.cardio?.incline ?? ''}
+                        onChange={(e) =>
+                          setEntries((l) =>
+                            l.map((x) => {
+                              if (x.exerciseId !== entry.exerciseId) return x;
+                              const cur = x.cardio ?? {
+                                durationMin: null,
+                                distanceKm: null,
+                                incline: null,
+                                level: null,
+                                intensity: 'moderate',
+                                done: true,
+                              };
+                              return {
+                                ...x,
+                                cardio: { ...cur, incline: e.target.value === '' ? null : Number(e.target.value) },
+                              };
+                            }),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Level / Resistance</label>
+                      <input
+                        className="input"
+                        inputMode="numeric"
+                        placeholder="5"
+                        value={entry.cardio?.level ?? ''}
+                        onChange={(e) =>
+                          setEntries((l) =>
+                            l.map((x) => {
+                              if (x.exerciseId !== entry.exerciseId) return x;
+                              const cur = x.cardio ?? {
+                                durationMin: null,
+                                distanceKm: null,
+                                incline: null,
+                                level: null,
+                                intensity: 'moderate',
+                                done: true,
+                              };
+                              return {
+                                ...x,
+                                cardio: { ...cur, level: e.target.value === '' ? null : Number(e.target.value) },
+                              };
+                            }),
                           )
                         }
                       />

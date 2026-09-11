@@ -63,6 +63,8 @@ export interface WorkSet {
 export interface Cardio {
   durationMin: number | null;
   distanceKm: number | null;
+  incline?: number | null;
+  level?: number | null;
   intensity: Intensity;
   done?: boolean;
 }

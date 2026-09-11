@@ -150,6 +150,8 @@ const CardioSchema = new Schema(
   {
     durationMin: { type: Number, default: null },
     distanceKm: { type: Number, default: null },
+    incline: { type: Number, default: null },
+    level: { type: Number, default: null },
     intensity: { type: String, enum: ['light', 'moderate', 'vigorous', 'max'], default: 'moderate' },
     avgHeartRate: { type: Number, default: null },
     done: { type: Boolean, default: false },

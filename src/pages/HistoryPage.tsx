@@ -145,8 +145,10 @@ export default function HistoryPage() {
                             <p className="muted">
                               {num(entry.cardio.durationMin ?? 0)} min · {entry.cardio.intensity}
                               {entry.cardio.distanceKm
-                                ? ` · ${num(fromKm(entry.cardio.distanceKm, units), 1)} ${distanceLabel(units)}`
+                                ? ` · ${num(fromKm(entry.cardio.distanceKm, units), 2)} ${distanceLabel(units)}`
                                 : ''}
+                              {entry.cardio.incline ? ` · ${entry.cardio.incline}% incl` : ''}
+                              {entry.cardio.level ? ` · Lvl ${entry.cardio.level}` : ''}
                             </p>
                           ) : (
                             <table className="data-table">

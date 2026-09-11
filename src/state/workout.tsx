@@ -90,6 +90,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
 
   const timer = useRef<number | null>(null);
   const dirty = useRef(false);
+  const editVersion = useRef(0);
 
   /* -------------------------------------------------------- load + save */
 
@@ -149,6 +150,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
 
     writeLocal({ sessionId: session.id, entries, updatedAt: Date.now() });
     setSaveState('saving');
+    const versionAtStart = editVersion.current;
 
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(async () => {
@@ -156,9 +158,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         const { session: saved } = await api.saveSession(session.id, { entries });
         setSession(saved);
         setSaveState('saved');
-        setPendingSync(false);
-        dirty.current = false;
-        writeLocal(null); // the server now has it
+        if (editVersion.current === versionAtStart) {
+          setPendingSync(false);
+          dirty.current = false;
+          writeLocal(null); // the server now has it
+        }
       } catch {
         setSaveState('offline');
         setPendingSync(true);
@@ -177,13 +181,16 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
 
     const flush = async () => {
       if (!dirty.current) return;
+      const versionAtStart = editVersion.current;
       try {
         const { session: saved } = await api.saveSession(session.id, { entries });
         setSession(saved);
         setSaveState('saved');
-        setPendingSync(false);
-        dirty.current = false;
-        writeLocal(null);
+        if (editVersion.current === versionAtStart) {
+          setPendingSync(false);
+          dirty.current = false;
+          writeLocal(null);
+        }
       } catch {
         /* still down — the interval will try again */
       }
@@ -211,6 +218,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const [undoStack, setUndoStack] = useState<Entry[][]>([]);
 
   const mutate = useCallback((fn: (list: Entry[]) => Entry[]) => {
+    editVersion.current += 1;
     dirty.current = true;
     setEntries(fn);
   }, []);
@@ -221,6 +229,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
    */
   const mutateUndoable = useCallback(
     (fn: (list: Entry[]) => Entry[]) => {
+      editVersion.current += 1;
       dirty.current = true;
       setEntries((list) => {
         setUndoStack((s) => [list, ...s].slice(0, 10));

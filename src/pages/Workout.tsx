@@ -249,35 +249,55 @@ function ExerciseCard({
         )}
 
         <div className="cardio-fields">
-          <div className="field">
-            <label htmlFor={`d-${entry.exerciseId}`}>Duration (min)</label>
-            <input
-              id={`d-${entry.exerciseId}`}
-              className="input"
-              inputMode="numeric"
-              value={cardio.durationMin ?? ''}
-              onChange={(e) =>
+          <CardioNumberInput
+            label="Duration (min)"
+            value={cardio.durationMin == null ? '' : String(cardio.durationMin)}
+            placeholder="30"
+            step={5}
+            onCommit={(v) =>
+              w.updateCardio(entry.exerciseId, {
+                durationMin: v === '' ? null : Number(v),
+              })
+            }
+          />
+          {exercise.isDistanceBased && (
+            <CardioNumberInput
+              label={`Distance (${distanceLabel(units)})`}
+              value={cardio.distanceKm == null ? '' : String(round(fromKm(cardio.distanceKm, units), 2))}
+              placeholder="1.25"
+              step={0.1}
+              onCommit={(v) =>
                 w.updateCardio(entry.exerciseId, {
-                  durationMin: e.target.value === '' ? null : Number(e.target.value),
+                  distanceKm: v === '' ? null : toKm(Number(v), units),
                 })
               }
             />
-          </div>
-          {exercise.isDistanceBased && (
-            <div className="field">
-              <label htmlFor={`k-${entry.exerciseId}`}>Distance ({distanceLabel(units)})</label>
-              <input
-                id={`k-${entry.exerciseId}`}
-                className="input"
-                inputMode="decimal"
-                value={cardio.distanceKm == null ? '' : round(fromKm(cardio.distanceKm, units), 2)}
-                onChange={(e) =>
-                  w.updateCardio(entry.exerciseId, {
-                    distanceKm: e.target.value === '' ? null : toKm(Number(e.target.value), units),
-                  })
-                }
-              />
-            </div>
+          )}
+          {(exercise.slug.includes('walk') || exercise.slug.includes('treadmill') || exercise.slug.includes('run') || exercise.category === 'cardio') && (
+            <CardioNumberInput
+              label="Incline (%)"
+              value={cardio.incline == null ? '' : String(cardio.incline)}
+              placeholder="3.5"
+              step={0.5}
+              onCommit={(v) =>
+                w.updateCardio(entry.exerciseId, {
+                  incline: v === '' ? null : Number(v),
+                })
+              }
+            />
+          )}
+          {(exercise.equipment?.includes('Machine') || exercise.slug.includes('bike') || exercise.slug.includes('stair') || exercise.slug.includes('elliptical') || exercise.slug.includes('rower')) && (
+            <CardioNumberInput
+              label="Level / Resistance"
+              value={cardio.level == null ? '' : String(cardio.level)}
+              placeholder="5"
+              step={1}
+              onCommit={(v) =>
+                w.updateCardio(entry.exerciseId, {
+                  level: v === '' ? null : Number(v),
+                })
+              }
+            />
           )}
         </div>
 
@@ -299,8 +319,7 @@ function ExerciseCard({
 
         {exercise.isDistanceBased && cardio.distanceKm && cardio.durationMin ? (
           <p className="hint">
-            {num(cardio.distanceKm / (cardio.durationMin / 60), 1)} km/h — pace is used instead of the effort label
-            when both numbers are present.
+            {num(fromKm(cardio.distanceKm, units) / (cardio.durationMin / 60), 1)} {distanceLabel(units)}/h ({num(cardio.durationMin / fromKm(cardio.distanceKm, units), 1)} min/{distanceLabel(units)})
           </p>
         ) : null}
 
@@ -849,11 +868,93 @@ function countWorkingBefore(sets: WorkSet[], index: number): number {
   return n;
 }
 
+function CardioNumberInput({
+  label,
+  value,
+  placeholder = '',
+  step,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  step?: number;
+  onCommit: (val: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setDraft(value);
+  }, [value]);
+
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <div className="stepper reps">
+        {step && (
+          <button
+            className="step-btn"
+            onClick={() => {
+              const cur = Number(draft) || 0;
+              const next = Math.max(0, Math.round((cur - step) * 100) / 100);
+              const str = String(next);
+              setDraft(str);
+              onCommit(str);
+            }}
+            tabIndex={-1}
+          >
+            −
+          </button>
+        )}
+        <input
+          className="set-input"
+          inputMode="decimal"
+          enterKeyHint="done"
+          autoComplete="off"
+          placeholder={placeholder}
+          value={draft}
+          onFocus={(e) => {
+            focused.current = true;
+            e.currentTarget.select();
+          }}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            focused.current = false;
+            onCommit(draft.trim());
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+        />
+        {step && (
+          <button
+            className="step-btn"
+            onClick={() => {
+              const cur = Number(draft) || 0;
+              const next = Math.max(0, Math.round((cur + step) * 100) / 100);
+              const str = String(next);
+              setDraft(str);
+              onCommit(str);
+            }}
+            tabIndex={-1}
+          >
+            +
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function cardioSummary(prev: PreviousPerformance, units: Units): string {
   const c = prev.cardio;
   if (!c) return relativeDay(prev.date);
-  const dist = c.distanceKm ? ` · ${num(fromKm(c.distanceKm, units), 1)} ${distanceLabel(units)}` : '';
-  return `${relativeDay(prev.date)} · ${num(c.durationMin ?? 0)} min${dist}`;
+  const parts: string[] = [`${num(c.durationMin ?? 0)} min`];
+  if (c.distanceKm) parts.push(`${num(fromKm(c.distanceKm, units), 2)} ${distanceLabel(units)}`);
+  if (c.incline) parts.push(`${c.incline}% incl`);
+  if (c.level) parts.push(`Lvl ${c.level}`);
+  return `${relativeDay(prev.date)} · ${parts.join(' · ')}`;
 }
 
 function round(n: number, digits: number): number {
