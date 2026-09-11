@@ -74,7 +74,7 @@ app.listen(port, () => console.log(`[api] listening on http://localhost:${port}`
 connectDb();
 void verifyMailer();
 
-const cors = require('cors');
+// ✅ Use the imported cors:
 app.use(cors({
   origin: ['https://tracker-amber-seven.vercel.app', 'http://localhost:5173'],
   credentials: true
