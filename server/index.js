@@ -12,6 +12,8 @@ import exerciseRoutes from './routes/exercises.routes.js';
 import routineRoutes from './routes/routines.routes.js';
 import sessionRoutes from './routes/sessions.routes.js';
 import statsRoutes from './routes/stats.routes.js';
+import cors from 'cors';
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
