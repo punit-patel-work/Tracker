@@ -73,3 +73,9 @@ const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => console.log(`[api] listening on http://localhost:${port}`));
 connectDb();
 void verifyMailer();
+
+const cors = require('cors');
+app.use(cors({
+  origin: ['https://tracker-amber-seven.vercel.app', 'http://localhost:5173'],
+  credentials: true
+}));
