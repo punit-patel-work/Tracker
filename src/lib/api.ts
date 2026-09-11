@@ -31,7 +31,14 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     // Status 0 means the request never reached a server: API down, or no network.
     throw new ApiError('Cannot reach the server. Is the API running?', 0);
   }
-  const json = await res.json().catch(() => ({}));
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    throw new ApiError('Unexpected response format from server. Is the API running?', res.ok ? 503 : res.status);
+  }
+  const json = await res.json().catch(() => null);
+  if (!json || typeof json !== 'object') {
+    throw new ApiError('Invalid response from server.', res.ok ? 503 : res.status);
+  }
   if (!res.ok) throw new ApiError((json as { error?: string }).error ?? 'Request failed', res.status);
   return json as T;
 }

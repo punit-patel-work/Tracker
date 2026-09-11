@@ -51,8 +51,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadAll = useCallback(async () => {
     const [{ exercises: ex }, { routines: r }] = await Promise.all([api.exercises(), api.routines()]);
-    setExercises(ex);
-    setRoutines(r);
+    setExercises(ex ?? []);
+    setRoutines(r ?? []);
   }, []);
 
   // Restore the session from the httpOnly cookie on first paint.
@@ -80,7 +80,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [loadAll, boot]);
 
-  const byId = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
+  const byId = useMemo(() => new Map((exercises ?? []).map((e) => [e.id, e])), [exercises]);
 
   const value: AppState = useMemo(
     () => ({
