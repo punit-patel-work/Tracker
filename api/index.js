@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
-import { connectDb, dbState } from '../server/db.js';
+import { ensureDbConnected, dbState } from '../server/db.js';
 import authRoutes from '../server/routes/auth.routes.js';
 import meRoutes from '../server/routes/me.routes.js';
 import exerciseRoutes from '../server/routes/exercises.routes.js';
@@ -16,16 +16,10 @@ app.use(compression());
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
-// Connect DB (uses cached connection across serverless invocations)
-connectDb();
-
-app.get('/api/health', (_req, res) =>
-  res.json({ ok: true, db: dbState.connected ? 'connected' : 'unavailable', reason: dbState.lastError }),
-);
-
-app.use('/api', (_req, res, next) => {
-  if (dbState.connected) return next();
-  res.status(503).json({ error: dbState.lastError ?? 'Database is starting up — try again in a moment' });
+app.use('/api', async (_req, res, next) => {
+  const ok = await ensureDbConnected();
+  if (ok) return next();
+  res.status(503).json({ error: dbState.lastError ?? 'Database connection failed' });
 });
 
 app.use('/api/auth', authRoutes);

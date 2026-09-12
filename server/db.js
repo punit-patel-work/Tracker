@@ -7,6 +7,45 @@ export const dbState = { connected: false, lastError: null, attempts: 0 };
 
 const RETRY_MS = 15000;
 
+let pendingConnect = null;
+
+export async function ensureDbConnected() {
+  if (mongoose.connection.readyState >= 1) {
+    dbState.connected = true;
+    return true;
+  }
+
+  if (!process.env.MONGODB_URI) {
+    dbState.lastError = 'MONGODB_URI is missing — check Vercel environment variables';
+    dbState.connected = false;
+    return false;
+  }
+
+  if (pendingConnect) {
+    await pendingConnect;
+    return dbState.connected;
+  }
+
+  mongoose.set('strictQuery', true);
+
+  pendingConnect = (async () => {
+    try {
+      await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 15000 });
+      dbState.connected = true;
+      dbState.lastError = null;
+      await seedCatalog();
+    } catch (err) {
+      dbState.connected = false;
+      dbState.lastError = explain(err);
+    } finally {
+      pendingConnect = null;
+    }
+  })();
+
+  await pendingConnect;
+  return dbState.connected;
+}
+
 /**
  * Connects in the background and keeps retrying. The HTTP server starts either
  * way: a dead database should produce one clear 503 per request, not a refused
