@@ -2,6 +2,7 @@ export type Units = 'metric' | 'imperial';
 export type Sex = 'male' | 'female';
 export type Goal = 'strength' | 'hypertrophy' | 'fat-loss' | 'general';
 export type Intensity = 'light' | 'moderate' | 'vigorous' | 'max';
+export type KeepAwakeSetting = 'always' | 'workout' | 'never';
 
 export interface WeighIn {
   date: string;
@@ -19,6 +20,7 @@ export interface User {
   units: Units;
   goal: Goal;
   weeklyTarget: number;
+  keepAwake?: KeepAwakeSetting;
   weighIns: WeighIn[];
   favorites: Record<string, string[]>;
   onboardedAt: string | null;

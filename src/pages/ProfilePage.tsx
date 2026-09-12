@@ -248,6 +248,26 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
+
+          <div className="field full">
+            <span className="field-label">Keep Screen Awake (Display Always Open)</span>
+            <div className="segmented lg">
+              {[
+                { id: 'workout', label: 'During Workout' },
+                { id: 'always', label: 'Always On Website' },
+                { id: 'never', label: 'Disabled' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  className={(user.keepAwake ?? 'workout') === opt.id ? 'on' : ''}
+                  onClick={() => void patch({ keepAwake: opt.id as any }, 'Screen wake setting updated')}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="hint">Prevents your phone or device screen from dimming or turning off while using the app.</p>
+          </div>
         </div>
       </section>
 

@@ -13,6 +13,11 @@ const RETRY_MS = 15000;
  * TCP connection that surfaces as an unreadable proxy error in the client.
  */
 export function connectDb() {
+  if (mongoose.connection.readyState >= 1) {
+    dbState.connected = true;
+    return;
+  }
+
   if (!process.env.MONGODB_URI) {
     dbState.lastError = 'MONGODB_URI is missing — copy .env.example to .env';
     console.error(`[db] ${dbState.lastError}`);

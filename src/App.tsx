@@ -107,7 +107,7 @@ function Shell({ themeToggle }: { themeToggle: React.ReactNode }) {
   const [page, setPage] = useState<Page>('home');
   const now = useTick(1000, !!w.session);
   const keyboardOpen = useKeyboardOpen();
-  useWakeLock(!!w.session); // don't let the phone lock between sets
+  useWakeLock(user?.keepAwake ?? 'workout', !!w.session);
 
   const go = (next: string) => {
     setPage(next as Page);

@@ -61,6 +61,29 @@ async function recompute(doc) {
   return { totals, byId };
 }
 
+function isSetLogged(s) {
+  return !!s.done || (s.reps != null && s.reps > 0) || s.weightKg != null || (s.durationSec != null && s.durationSec > 0);
+}
+
+function isCardioLogged(c) {
+  return !!c && (!!c.done || (c.durationMin != null && c.durationMin > 0) || (c.distanceKm != null && c.distanceKm > 0));
+}
+
+function finalizeEntries(entries) {
+  return (entries ?? [])
+    .map((e) => {
+      const obj = e.toObject ? e.toObject() : e;
+      const validSets = (obj.sets ?? [])
+        .filter(isSetLogged)
+        .map((s) => ({ ...s, done: true }));
+      const validCardio = isCardioLogged(obj.cardio)
+        ? { ...obj.cardio, done: true }
+        : null;
+      return { ...obj, sets: validSets, cardio: validCardio };
+    })
+    .filter((e) => e.sets.length > 0 || !!e.cardio?.done);
+}
+
 /**
  * Finalize stale workouts consistently with the normal Finish action. This is
  * checked whenever the user accesses session APIs, so it also works after a
@@ -73,9 +96,7 @@ async function closeExpiredSessions(userId = null) {
 
   const stale = await Session.find(query);
   for (const doc of stale) {
-    doc.entries = doc.entries
-      .map((e) => ({ ...e.toObject(), sets: (e.sets ?? []).filter((s) => s.done) }))
-      .filter((e) => e.sets.length > 0 || e.cardio?.done);
+    doc.entries = finalizeEntries(doc.entries);
 
     if (!doc.entries.length) {
       await Session.deleteOne({ _id: doc._id, status: 'active' });
@@ -314,9 +335,7 @@ router.post('/:id/finish', async (req, res) => {
     return res.json({ session: serialize(doc.toObject()), newPRs: [], discarded: false, autoClosed: true });
   }
 
-  doc.entries = doc.entries
-    .map((e) => ({ ...e.toObject(), sets: (e.sets ?? []).filter((s) => s.done) }))
-    .filter((e) => e.sets.length > 0 || e.cardio?.done);
+  doc.entries = finalizeEntries(doc.entries);
 
   if (!doc.entries.length) {
     await Session.deleteOne({ _id: doc._id });

@@ -285,9 +285,25 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       finish: async () => {
         if (!session) return { session: null, newPRs: [], discarded: true };
         // Flush anything still pending before the server decides what to keep.
-        // If this throws, the workout stays open with the local copy intact.
+        // Auto-mark any set or cardio with logged values as done so no exercise is dropped.
         if (timer.current) window.clearTimeout(timer.current);
-        if (dirty.current) await api.saveSession(session.id, { entries });
+        const autoDoneEntries = entries.map((e) => ({
+          ...e,
+          sets: e.sets.map((s) => ({
+            ...s,
+            done: s.done || (s.reps != null && s.reps > 0) || s.weightKg != null || (s.durationSec != null && s.durationSec > 0),
+          })),
+          cardio: e.cardio
+            ? {
+                ...e.cardio,
+                done:
+                  !!e.cardio.done ||
+                  (e.cardio.durationMin != null && e.cardio.durationMin > 0) ||
+                  (e.cardio.distanceKm != null && e.cardio.distanceKm > 0),
+              }
+            : null,
+        }));
+        await api.saveSession(session.id, { entries: autoDoneEntries });
         const result = await api.finishSession(session.id);
         writeLocal(null);
         setSession(null);

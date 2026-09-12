@@ -6,7 +6,7 @@ import { requireAuth } from '../auth.js';
 const router = Router();
 router.use(requireAuth);
 
-const EDITABLE = ['name', 'sex', 'birthYear', 'heightCm', 'units', 'goal', 'weeklyTarget'];
+const EDITABLE = ['name', 'sex', 'birthYear', 'heightCm', 'units', 'goal', 'weeklyTarget', 'keepAwake'];
 
 router.patch('/', async (req, res) => {
   const user = req.user;

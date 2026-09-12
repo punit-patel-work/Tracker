@@ -12,22 +12,26 @@ export function useTick(ms: number, enabled = true): number {
 }
 
 /**
- * Holds the screen awake while a workout is running, so the phone does not lock
- * between sets. Re-acquires after the tab is backgrounded — the browser drops
- * the lock automatically and does not give it back on its own.
+ * Holds the screen awake based on user preference ('always' or 'workout').
+ * Re-acquires after the tab is backgrounded — the browser drops the lock
+ * automatically and does not give it back on its own.
  */
-export function useWakeLock(active: boolean): void {
+export function useWakeLock(mode: 'always' | 'workout' | 'never', hasActiveSession: boolean): void {
+  const active = mode === 'always' || (mode === 'workout' && hasActiveSession);
+
   useEffect(() => {
-    if (!active || !('wakeLock' in navigator)) return;
+    if (!active) return;
 
     let sentinel: WakeLockSentinel | null = null;
     let released = false;
 
     const acquire = async () => {
-      try {
-        sentinel = await navigator.wakeLock.request('screen');
-      } catch {
-        /* denied, low battery, or unsupported — not worth surfacing */
+      if ('wakeLock' in navigator) {
+        try {
+          sentinel = await navigator.wakeLock.request('screen');
+        } catch {
+          /* denied, low battery, or unsupported */
+        }
       }
     };
 

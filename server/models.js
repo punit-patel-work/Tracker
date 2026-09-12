@@ -21,6 +21,7 @@ const UserSchema = new Schema(
     units: { type: String, enum: ['metric', 'imperial'], default: 'metric' },
     goal: { type: String, enum: ['strength', 'hypertrophy', 'fat-loss', 'general'], default: 'general' },
     weeklyTarget: { type: Number, default: 4 },
+    keepAwake: { type: String, enum: ['always', 'workout', 'never'], default: 'workout' },
 
     /** Body weight is a time series — a session keeps the weight it was logged at. */
     weighIns: { type: [WeighInSchema], default: [] },
@@ -65,6 +66,7 @@ UserSchema.methods.toPublic = function toPublic() {
     units: this.units,
     goal: this.goal,
     weeklyTarget: this.weeklyTarget,
+    keepAwake: this.keepAwake ?? 'workout',
     weighIns: this.weighIns,
     favorites: Object.fromEntries(this.favorites ?? []),
     onboardedAt: this.onboardedAt,
