@@ -52,8 +52,8 @@ export function effectiveLoadKg(exercise, set, bodyWeightKg) {
 }
 
 export function isWorkingSet(set) {
-  if (!set.done || set.isWarmup) return false;
-  return (set.reps ?? 0) > 0 || (set.durationSec ?? 0) > 0;
+  if (!set || set.isWarmup) return false;
+  return (set.reps ?? 0) > 0 || (set.durationSec ?? 0) > 0 || (set.weightKg ?? 0) > 0 || !!set.done;
 }
 
 /**
@@ -85,7 +85,7 @@ export function bestE1rm(sets, exercise, bodyWeightKg) {
  * Warmups count for energy (you did move) but never for volume or PRs.
  */
 export function strengthKcal(exercise, sets, bodyWeightKg) {
-  const done = sets.filter((x) => x.done && ((x.reps ?? 0) > 0 || (x.durationSec ?? 0) > 0));
+  const done = (sets ?? []).filter((x) => isWorkingSet(x));
   if (!done.length) return 0;
   // A timed hold measures its own work time; a rep set is estimated from tempo.
   const activeMin =
@@ -122,8 +122,8 @@ function speedMet(slug, kph) {
 }
 
 export function cardioKcal(exercise, cardio, bodyWeightKg) {
-  if (!cardio?.done) return 0;
-  const minutes = cardio.durationMin ?? 0;
+  const minutes = cardio?.durationMin ?? 0;
+  if (!cardio || !(minutes > 0 || (cardio.distanceKm ?? 0) > 0 || cardio.done)) return 0;
   let met = (exercise.met ?? 5) * (INTENSITY_FACTOR[cardio.intensity] ?? 1);
   // A logged distance beats the subjective label: derive the real speed.
   if (exercise.isDistanceBased && cardio.distanceKm > 0 && minutes > 0) {
@@ -149,7 +149,9 @@ export function sessionTotals(session, byId) {
     if (!ex) continue;
     if (ex.type === 'cardio') {
       cardio += cardioKcal(ex, entry.cardio, session.bodyWeightKg);
-      if (entry.cardio?.done) cardioMinutes += entry.cardio.durationMin ?? 0;
+      if (entry.cardio && (entry.cardio.done || (entry.cardio.durationMin ?? 0) > 0)) {
+        cardioMinutes += entry.cardio.durationMin ?? 0;
+      }
     } else {
       const v = setVolume(entry.sets ?? [], ex, session.bodyWeightKg);
       volumeKg += v;

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { CATALOG } from '../shared/catalog.js';
-import { Exercise } from './models.js';
+import { Exercise, Session } from './models.js';
+import { sessionTotals } from '../shared/engine.js';
 
 /** Readable connection state for the health endpoint and the /api guard. */
 export const dbState = { connected: false, lastError: null, attempts: 0 };
@@ -117,4 +118,46 @@ async function seedCatalog() {
   const res = await Exercise.bulkWrite(ops, { ordered: false });
   const added = res.upsertedCount ?? 0;
   if (added) console.log(`[db] seeded ${added} catalog exercises`);
+  void migrateStaleSessions();
+}
+
+async function migrateStaleSessions() {
+  try {
+    const sessions = await Session.find({ status: 'completed' });
+    let updatedCount = 0;
+    for (const doc of sessions) {
+      let changed = false;
+      for (const entry of doc.entries ?? []) {
+        for (const set of entry.sets ?? []) {
+          if (!set.done && ((set.reps ?? 0) > 0 || (set.durationSec ?? 0) > 0 || (set.weightKg ?? 0) > 0)) {
+            set.done = true;
+            changed = true;
+          }
+        }
+        if (entry.cardio && !entry.cardio.done && ((entry.cardio.durationMin ?? 0) > 0 || (entry.cardio.distanceKm ?? 0) > 0)) {
+          entry.cardio.done = true;
+          changed = true;
+        }
+      }
+      if (changed) {
+        const docs = await Exercise.find({ _id: { $in: doc.entries.map((e) => e.exercise) } }).lean();
+        const byId = new Map(docs.map((d) => [String(d._id), d]));
+        doc.totals = sessionTotals(
+          {
+            entries: doc.entries.map((e) => ({ exerciseId: String(e.exercise), sets: e.sets, cardio: e.cardio })),
+            bodyWeightKg: doc.bodyWeightKg,
+            startedAt: doc.startedAt,
+            endedAt: doc.endedAt,
+            date: doc.date,
+          },
+          byId,
+        );
+        await doc.save();
+        updatedCount += 1;
+      }
+    }
+    if (updatedCount) console.log(`[db] migrated ${updatedCount} historical sessions to mark logged sets as done`);
+  } catch (err) {
+    console.error('[db] session migration warning:', err.message);
+  }
 }
