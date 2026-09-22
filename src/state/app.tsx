@@ -10,15 +10,8 @@ import {
 import { api, isBackendDown } from '../lib/api';
 import type { Exercise, Routine, User } from '../lib/types';
 
-export const CATEGORIES = [
-  { id: 'chest', name: 'Chest' },
-  { id: 'back', name: 'Back' },
-  { id: 'legs', name: 'Legs' },
-  { id: 'shoulders', name: 'Shoulders' },
-  { id: 'arms', name: 'Arms' },
-  { id: 'core', name: 'Core' },
-  { id: 'cardio', name: 'Cardio' },
-];
+import { CATEGORIES } from '../../shared/catalog.js';
+export { CATEGORIES };
 
 interface AppState {
   ready: boolean;
