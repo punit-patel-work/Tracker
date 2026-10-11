@@ -15,6 +15,7 @@ import HistoryPage from './pages/HistoryPage';
 import Progress from './pages/Progress';
 import ProfilePage from './pages/ProfilePage';
 import * as I from './components/Icon';
+import { Logo } from './components/Logo';
 
 type Page = 'home' | 'workout' | 'routines' | 'history' | 'progress' | 'profile';
 
@@ -46,9 +47,7 @@ export default function App() {
   if (!ready) {
     return (
       <div className="splash">
-        <div className="brand-mark lg">
-          <I.Flame size={30} />
-        </div>
+        <Logo size={64} variant="mark" />
         <p className="muted">Loading your training…</p>
       </div>
     );
@@ -59,9 +58,7 @@ export default function App() {
   if (backendError) {
     return (
       <div className="splash">
-        <div className="brand-mark lg">
-          <I.Flame size={30} />
-        </div>
+        <Logo size={64} variant="mark" />
         <div className="down-card">
           <h2>Can't connect</h2>
           <p>
@@ -125,14 +122,8 @@ function Shell({ themeToggle }: { themeToggle: React.ReactNode }) {
     >
       <header className="header">
         <div className="header-inner">
-          <button className="brand" onClick={() => go('home')}>
-            <div className="brand-mark">
-              <I.Flame size={22} />
-            </div>
-            <div className="brand-text">
-              <span className="brand-title">Gym Tracker</span>
-              <span className="brand-sub">Strength &amp; cardio log</span>
-            </div>
+          <button className="brand" onClick={() => go('home')} aria-label="Gym Tracker Home">
+            <Logo size={36} showSub={true} />
           </button>
 
           <nav className="nav desktop-only" aria-label="Sections">

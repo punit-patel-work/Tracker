@@ -280,13 +280,20 @@ button:disabled {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  text-align: left;
 }
 
 .brand-title {
   font-size: 16.5px;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   white-space: nowrap;
+  color: var(--text);
+}
+
+.brand-accent {
+  color: var(--primary);
+  font-weight: 800;
 }
 
 .brand-sub {
@@ -295,6 +302,17 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.logo-mark-svg {
+  flex: none;
+  filter: drop-shadow(0 3px 12px rgba(0, 229, 153, 0.28));
+  transition: transform var(--speed-fast) ease, filter var(--speed-fast) ease;
+}
+
+.brand:hover .logo-mark-svg {
+  transform: scale(1.05);
+  filter: drop-shadow(0 5px 16px rgba(0, 229, 153, 0.45));
 }
 
 /* The tagline is the first thing to go when the header runs out of room. */

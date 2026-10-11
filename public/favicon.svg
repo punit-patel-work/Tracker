@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <style>
+    :root {
+      --bg: #0d0f15;
+      --border: #00e599;
+      --plate: #00e599;
+      --shaft: #00e599;
+      --chevron: #ffffff;
+      --top-light: rgba(255, 255, 255, 0.28);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #ffffff;
+        --border: #059669;
+        --plate: #059669;
+        --shaft: #059669;
+        --chevron: #04150e;
+        --top-light: rgba(0, 0, 0, 0.08);
+      }
+    }
+  </style>
+
+  <!-- Chassis Squircle -->
+  <rect x="4" y="4" width="92" height="92" rx="24" fill="var(--bg)" stroke="var(--border)" stroke-width="3"/>
+  <path d="M 28 5.5 L 72 5.5" stroke="var(--top-light)" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Left Plates -->
+  <rect x="14" y="34" width="6" height="32" rx="3" fill="var(--plate)" opacity="0.85"/>
+  <rect x="23" y="24" width="8" height="52" rx="4" fill="var(--plate)"/>
+  <rect x="33" y="38" width="4" height="24" rx="2" fill="var(--plate)" opacity="0.9"/>
+
+  <!-- Central Shaft -->
+  <rect x="37" y="46" width="26" height="8" rx="4" fill="var(--shaft)"/>
+
+  <!-- Right Plates -->
+  <rect x="63" y="38" width="4" height="24" rx="2" fill="var(--plate)" opacity="0.9"/>
+  <rect x="69" y="24" width="8" height="52" rx="4" fill="var(--plate)"/>
+  <rect x="80" y="34" width="6" height="32" rx="3" fill="var(--plate)" opacity="0.85"/>
+
+  <!-- Upward Progressive Overload Peak Chevron -->
+  <path d="M 38 41 L 50 27 L 62 41" stroke="var(--chevron)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -41,6 +41,11 @@
   --accent-ink: #04150e;
   --accent-text: #00e599;
 
+  /* Brand Logo Tokens */
+  --logo-bg-start: #141722;
+  --logo-bg-end: #090a0f;
+  --logo-chevron: #ffffff;
+
   /* Realtime Colors: Signal & Status Accents */
   --danger: #f43f5e;
   --danger-soft: rgba(244, 63, 94, 0.14);
@@ -115,6 +120,11 @@
   --accent-ink: #ffffff;
   --accent-text: #059669;
 
+  /* Brand Logo Tokens */
+  --logo-bg-start: #ffffff;
+  --logo-bg-end: #f1f5f9;
+  --logo-chevron: #04150e;
+
   --danger: #e11d48;
   --danger-soft: rgba(225, 29, 72, 0.1);
   --good: #059669;
@@ -179,6 +189,11 @@
     --accent-soft: rgba(5, 150, 105, 0.1);
     --accent-ink: #ffffff;
     --accent-text: #059669;
+
+    /* Brand Logo Tokens */
+    --logo-bg-start: #ffffff;
+    --logo-bg-end: #f1f5f9;
+    --logo-chevron: #04150e;
 
     --danger: #e11d48;
     --danger-soft: rgba(225, 29, 72, 0.1);

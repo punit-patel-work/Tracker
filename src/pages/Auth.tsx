@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { useApp } from '../state/app';
 import { api } from '../lib/api';
 import * as I from '../components/Icon';
+import { Logo } from '../components/Logo';
 
 type Mode = 'login' | 'signup' | 'forgot' | 'reset';
 
@@ -75,9 +76,7 @@ export default function Auth({ themeToggle }: { themeToggle: ReactNode }) {
       <div className="auth-theme">{themeToggle}</div>
 
       <aside className="auth-pitch">
-        <div className="brand-mark lg">
-          <I.Flame size={30} />
-        </div>
+        <Logo size={60} variant="mark" />
         <h1>
           Track the lift,
           <br />
