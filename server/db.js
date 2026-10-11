@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { CATALOG } from '../shared/catalog.js';
-import { Exercise, Session } from './models.js';
+import { Exercise, Routine, Session } from './models.js';
 import { sessionTotals } from '../shared/engine.js';
 
 /** Readable connection state for the health endpoint and the /api guard. */
@@ -106,6 +106,115 @@ function explain(err) {
   return msg.slice(0, 300);
 }
 
+const LEGACY_SLUG_MAP = {
+  'bench-press': 'barbell-flat-bench-press',
+  'smith-bench-press': 'smith-machine-bench-press',
+  'chest-press-machine': 'chest-press-machine',
+  'incline-chest-press-machine': 'incline-chest-press-machine',
+  'incline-db-press': 'dumbbell-incline-bench-press',
+  'pec-deck': 'pec-deck-butterfly-machine',
+  'cable-fly': 'cable-crossover-flyes',
+  'assisted-dip-machine': 'assisted-dip-machine-chest-focus',
+  'dips': 'parallel-bar-dip-chest-emphasis',
+  'push-ups': 'standard-push-up',
+  'deadlift': 'conventional-barbell-deadlift',
+  'barbell-row': 'barbell-bent-over-row',
+  'lat-pulldown': 'lat-pulldown-machine',
+  'seated-row': 'seated-cable-row',
+  't-bar-row': 'chest-supported-t-bar-row-machine',
+  'pull-ups': 'pull-up-overhand-grip',
+  'assisted-pullup-machine': 'assisted-pull-up-machine',
+  'reverse-pec-deck': 'reverse-pec-deck-rear-delt-fly',
+  'back-extension': 'back-extension-hyperextension-machine',
+  'face-pull': 'cable-face-pull',
+  'ohp': 'standing-barbell-overhead-press-military-press',
+  'smith-ohp': 'smith-machine-overhead-press',
+  'shoulder-press-machine': 'seated-shoulder-press-machine',
+  'db-shoulder-press': 'seated-dumbbell-shoulder-press',
+  'lateral-raise': 'standing-dumbbell-lateral-raise',
+  'lateral-raise-machine': 'lateral-raise-machine',
+  'cable-lateral-raise': 'cable-lateral-raise',
+  'cable-front-raise': 'cable-front-raise',
+  'back-squat': 'barbell-back-squat-high-bar',
+  'front-squat': 'barbell-front-squat',
+  'smith-squat': 'smith-machine-squat',
+  'hack-squat': 'hack-squat-machine',
+  'leg-press': 'leg-press-45-degree-seated',
+  'rdl': 'barbell-romanian-deadlift',
+  'leg-extension': 'leg-extension-machine',
+  'leg-curl': 'lying-leg-curl-machine',
+  'seated-leg-curl': 'seated-leg-curl-machine',
+  'walking-lunge': 'dumbbell-walking-lunge',
+  'glute-drive': 'glute-drive-machine-hip-thrust',
+  'hip-abduction': 'hip-abduction-machine',
+  'hip-adduction': 'hip-adduction-machine',
+  'calf-raise': 'standing-calf-raise-machine',
+  'seated-calf-raise': 'seated-calf-raise-machine',
+  'barbell-curl': 'standing-barbell-curl',
+  'cable-curl': 'cable-bicep-curl',
+  'preacher-curl-machine': 'preacher-curl-machine',
+  'hammer-curl': 'dumbbell-hammer-curl',
+  'cable-hammer-curl': 'cable-hammer-curl-rope',
+  'rope-pushdown': 'cable-triceps-pushdown',
+  'triceps-extension-machine': 'triceps-extension-machine',
+  'overhead-triceps-cable': 'cable-overhead-triceps-extension',
+  'skullcrusher': 'ez-bar-skull-crusher',
+  'ab-crunch-machine': 'abdominal-crunch-machine',
+  'woodchopper': 'cable-woodchopper-torso-rotation',
+  'captains-chair': 'captain-s-chair-leg-raise-tower',
+  'decline-crunch': 'decline-ab-bench-crunch',
+  'cable-crunch': 'kneeling-cable-crunch',
+  'hanging-leg-raise': 'hanging-straight-leg-raise',
+  'plank': 'forearm-plank',
+  'treadmill': 'treadmill-running-walking',
+  'incline-walk': 'incline-treadmill-walking',
+  'outdoor-run': 'jogging-self-selected-pace',
+  'stair-climber': 'stair-climber-stairmaster',
+  'bike': 'stationary-bike-upright',
+  'recumbent-bike': 'recumbent-bike',
+  'rower': 'rowing-machine-ergometer',
+  'elliptical': 'elliptical-trainer',
+  'air-bike': 'assault-air-bike',
+  'skierg': 'skierg-machine',
+  'jacobs-ladder': 'jacobs-ladder-machine',
+  'jump-rope': 'jump-rope-moderate-100-120-skips-minute',
+};
+
+async function mergeAndPruneOldCatalogExercises() {
+  try {
+    const validSlugs = new Set(CATALOG.map((e) => e.slug));
+    const oldExercises = await Exercise.find({
+      owner: null,
+      slug: { $nin: Array.from(validSlugs) },
+    });
+
+    if (!oldExercises.length) return;
+
+    for (const oldDoc of oldExercises) {
+      const targetSlug = LEGACY_SLUG_MAP[oldDoc.slug];
+      if (targetSlug) {
+        const newDoc = await Exercise.findOne({ owner: null, slug: targetSlug });
+        if (newDoc && String(oldDoc._id) !== String(newDoc._id)) {
+          await Session.updateMany(
+            { 'entries.exercise': oldDoc._id },
+            { $set: { 'entries.$[el].exercise': newDoc._id } },
+            { arrayFilters: [{ 'el.exercise': oldDoc._id }] },
+          );
+          await Routine.updateMany(
+            { 'exercises.exercise': oldDoc._id },
+            { $set: { 'exercises.$[el].exercise': newDoc._id } },
+            { arrayFilters: [{ 'el.exercise': oldDoc._id }] },
+          );
+        }
+      }
+      await Exercise.deleteOne({ _id: oldDoc._id });
+    }
+    console.log(`[db] pruned and merged ${oldExercises.length} legacy catalog exercises`);
+  } catch (err) {
+    console.error('[db] warning during legacy catalog cleanup:', err.message);
+  }
+}
+
 /** Idempotent: upserts the shipped catalog, leaves user-created exercises alone. */
 async function seedCatalog() {
   const ops = CATALOG.map((ex) => ({
@@ -118,6 +227,7 @@ async function seedCatalog() {
   const res = await Exercise.bulkWrite(ops, { ordered: false });
   const added = res.upsertedCount ?? 0;
   if (added) console.log(`[db] seeded ${added} catalog exercises`);
+  await mergeAndPruneOldCatalogExercises();
   void migrateStaleSessions();
 }
 

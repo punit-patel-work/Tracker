@@ -1,70 +1,86 @@
 /*
- * Design tokens. Dark is the default look; light is a selected counterpart with
- * its own steps, not an inverted flip.
+ * Design tokens.
+ * Built with the Realtime Colors 5-token palette system and Watermelon UI / Shadcn design conventions:
+ * Text, Background, Primary (Electric Emerald), Secondary (Layered Obsidian/Slate), Accent (Radiant Amber).
  *
- * Chart series colors come from the validated categorical palette and are held
- * apart from the violet brand chrome on purpose: --series-* is data ink,
- * --accent is UI. Both modes pass the six colour checks against the card
- * surface they actually render on (#ffffff / #12121f).
+ * Strict contrast ratios:
+ * - High-contrast text on solid surfaces.
+ * - Tabular numbers for weights, reps, rest timers, and volume graphs.
+ * - Studio-grade athletic aesthetic, removing generic AI "vibecoded" purple gradients.
  */
 
 :root {
   color-scheme: dark;
 
-  --page: #07070e;
-  --page-glow-a: rgba(109, 92, 245, 0.16);
-  --page-glow-b: rgba(168, 85, 247, 0.1);
+  /* Realtime Colors: Canvas & Background */
+  --page: #090a0f;
+  --page-glow-a: rgba(0, 229, 153, 0.03);
+  --page-glow-b: rgba(56, 189, 248, 0.02);
 
-  --surface: #12121f;
-  --surface-2: #17172a;
-  --surface-3: #1e1e35;
-  --surface-inset: #0d0d18;
+  /* Realtime Colors: Secondary / Surface Architecture */
+  --surface: #111319;
+  --surface-2: #171a22;
+  --surface-3: #1f232e;
+  --surface-inset: #0c0d12;
 
+  /* Borders & Elevational Focus */
   --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --ring: rgba(124, 92, 255, 0.45);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-hover: rgba(255, 255, 255, 0.22);
+  --ring: rgba(0, 229, 153, 0.38);
 
-  --text: #f4f4fb;
-  --text-2: #a8a8c4;
-  --text-3: #71718f;
+  /* Realtime Colors: Text Hierarchy */
+  --text: #f8fafc;
+  --text-2: #94a3b8;
+  --text-3: #64748b;
 
-  --accent: #6d5cf5;
-  --accent-hover: #7d6dff;
-  --accent-soft: rgba(109, 92, 245, 0.16);
-  --accent-ink: #ffffff;
-  --accent-text: #a99bff;
+  /* Realtime Colors: Primary Athletic Brand (Electric Emerald) */
+  --accent: #00e599;
+  --accent-hover: #05f2a5;
+  --accent-soft: rgba(0, 229, 153, 0.12);
+  --accent-ink: #04150e;
+  --accent-text: #00e599;
 
-  --danger: #e66767;
-  --danger-soft: rgba(230, 103, 103, 0.14);
-  --good: #0ca30c;
-  --warning: #fab219;
+  /* Realtime Colors: Signal & Status Accents */
+  --danger: #f43f5e;
+  --danger-soft: rgba(244, 63, 94, 0.14);
+  --good: #00e599;
+  --good-soft: rgba(0, 229, 153, 0.14);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.14);
 
-  /* Chart ink */
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --grid: #2c2c3a;
-  --axis: #383848;
-  --muted-ink: #8f8fa8;
-  --seq-100: #cde2fb;
-  --seq-250: #86b6ef;
-  --seq-400: #3987e5;
-  --seq-550: #1c5cab;
-  --seq-700: #0d366b;
+  /* Chart Ink (Precision Data Visualization) */
+  --series-1: #00e599;
+  --series-2: #38bdf8;
+  --grid: rgba(255, 255, 255, 0.06);
+  --axis: rgba(255, 255, 255, 0.12);
+  --muted-ink: #64748b;
+  --seq-100: #d1fae5;
+  --seq-250: #6ee7b7;
+  --seq-400: #00e599;
+  --seq-550: #059669;
+  --seq-700: #064e3b;
 
-  /* Category chrome (labels and chips only — never a data mark) */
-  --cat-chest: #f472b6;
-  --cat-back: #60a5fa;
-  --cat-legs: #fbbf24;
-  --cat-shoulders: #a78bfa;
-  --cat-arms: #34d399;
-  --cat-core: #22d3ee;
-  --cat-cardio: #fb7185;
+  /* Category Chrome Tokens (11 Core Gym & Activity Categories) */
+  --cat-chest: #ec4899;
+  --cat-back: #3b82f6;
+  --cat-legs: #f59e0b;
+  --cat-shoulders: #8b5cf6;
+  --cat-arms: #10b981;
+  --cat-core: #06b6d4;
+  --cat-cardio: #f43f5e;
+  --cat-full-body: #a855f7;
+  --cat-mobility: #14b8a6;
+  --cat-stretching: #6366f1;
+  --cat-classes: #f97316;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.45);
-  --shadow-accent: 0 8px 24px rgba(109, 92, 245, 0.35);
+  /* Shadow & Glow Elevational Hierarchy */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
+  --shadow-accent: 0 4px 22px rgba(0, 229, 153, 0.26);
 
+  /* Geometry & Radius Scaling */
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
@@ -75,44 +91,47 @@
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --page: #f2f3f9;
-  --page-glow-a: rgba(109, 92, 245, 0.12);
-  --page-glow-b: rgba(168, 85, 247, 0.08);
+  --page: #f8fafc;
+  --page-glow-a: rgba(0, 229, 153, 0.04);
+  --page-glow-b: rgba(56, 189, 248, 0.03);
 
   --surface: #ffffff;
-  --surface-2: #f7f7fc;
-  --surface-3: #eeeef7;
-  --surface-inset: #f4f4fa;
+  --surface-2: #f1f5f9;
+  --surface-3: #e2e8f0;
+  --surface-inset: #f8fafc;
 
-  --border: rgba(16, 16, 34, 0.1);
-  --border-strong: rgba(16, 16, 34, 0.18);
-  --ring: rgba(91, 70, 229, 0.35);
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.16);
+  --border-hover: rgba(15, 23, 42, 0.24);
+  --ring: rgba(5, 150, 105, 0.35);
 
-  --text: #14142b;
-  --text-2: #55556e;
-  --text-3: #82829c;
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #64748b;
 
-  --accent: #5b46e5;
-  --accent-hover: #4b37d4;
-  --accent-soft: rgba(91, 70, 229, 0.1);
+  --accent: #059669;
+  --accent-hover: #047857;
+  --accent-soft: rgba(5, 150, 105, 0.1);
   --accent-ink: #ffffff;
-  --accent-text: #4b37d4;
+  --accent-text: #059669;
 
-  --danger: #d03b3b;
-  --danger-soft: rgba(208, 59, 59, 0.1);
-  --good: #006300;
-  --warning: #b17400;
+  --danger: #e11d48;
+  --danger-soft: rgba(225, 29, 72, 0.1);
+  --good: #059669;
+  --good-soft: rgba(5, 150, 105, 0.1);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.1);
 
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --grid: #e7e7f0;
-  --axis: #c9c9d8;
-  --muted-ink: #6e6e88;
-  --seq-100: #cde2fb;
-  --seq-250: #86b6ef;
-  --seq-400: #3987e5;
-  --seq-550: #1c5cab;
-  --seq-700: #0d366b;
+  --series-1: #059669;
+  --series-2: #0284c7;
+  --grid: #e2e8f0;
+  --axis: #cbd5e1;
+  --muted-ink: #64748b;
+  --seq-100: #d1fae5;
+  --seq-250: #6ee7b7;
+  --seq-400: #059669;
+  --seq-550: #047857;
+  --seq-700: #064e3b;
 
   --cat-chest: #db2777;
   --cat-back: #2563eb;
@@ -121,51 +140,58 @@
   --cat-arms: #047857;
   --cat-core: #0e7490;
   --cat-cardio: #e11d48;
+  --cat-full-body: #9333ea;
+  --cat-mobility: #0d9488;
+  --cat-stretching: #4f46e5;
+  --cat-classes: #ea580c;
 
-  --shadow-sm: 0 1px 2px rgba(20, 20, 43, 0.06);
-  --shadow-md: 0 8px 24px rgba(20, 20, 43, 0.08);
-  --shadow-lg: 0 20px 50px rgba(20, 20, 43, 0.12);
-  --shadow-accent: 0 8px 20px rgba(91, 70, 229, 0.28);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 6px 18px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
+  --shadow-accent: 0 4px 18px rgba(5, 150, 105, 0.22);
 }
 
-/* No stored preference: follow the OS. The [data-theme] blocks above always win. */
+/* No stored preference: follow OS. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
 
-    --page: #f2f3f9;
-    --page-glow-a: rgba(109, 92, 245, 0.12);
-    --page-glow-b: rgba(168, 85, 247, 0.08);
+    --page: #f8fafc;
+    --page-glow-a: rgba(0, 229, 153, 0.04);
+    --page-glow-b: rgba(56, 189, 248, 0.03);
 
     --surface: #ffffff;
-    --surface-2: #f7f7fc;
-    --surface-3: #eeeef7;
-    --surface-inset: #f4f4fa;
+    --surface-2: #f1f5f9;
+    --surface-3: #e2e8f0;
+    --surface-inset: #f8fafc;
 
-    --border: rgba(16, 16, 34, 0.1);
-    --border-strong: rgba(16, 16, 34, 0.18);
-    --ring: rgba(91, 70, 229, 0.35);
+    --border: rgba(15, 23, 42, 0.08);
+    --border-strong: rgba(15, 23, 42, 0.16);
+    --border-hover: rgba(15, 23, 42, 0.24);
+    --ring: rgba(5, 150, 105, 0.35);
 
-    --text: #14142b;
-    --text-2: #55556e;
-    --text-3: #82829c;
+    --text: #0f172a;
+    --text-2: #475569;
+    --text-3: #64748b;
 
-    --accent: #5b46e5;
-    --accent-hover: #4b37d4;
-    --accent-soft: rgba(91, 70, 229, 0.1);
+    --accent: #059669;
+    --accent-hover: #047857;
+    --accent-soft: rgba(5, 150, 105, 0.1);
     --accent-ink: #ffffff;
-    --accent-text: #4b37d4;
+    --accent-text: #059669;
 
-    --danger: #d03b3b;
-    --danger-soft: rgba(208, 59, 59, 0.1);
-    --good: #006300;
-    --warning: #b17400;
+    --danger: #e11d48;
+    --danger-soft: rgba(225, 29, 72, 0.1);
+    --good: #059669;
+    --good-soft: rgba(5, 150, 105, 0.1);
+    --warning: #d97706;
+    --warning-soft: rgba(217, 119, 6, 0.1);
 
-    --series-1: #2a78d6;
-    --series-2: #eb6834;
-    --grid: #e7e7f0;
-    --axis: #c9c9d8;
-    --muted-ink: #6e6e88;
+    --series-1: #059669;
+    --series-2: #0284c7;
+    --grid: #e2e8f0;
+    --axis: #cbd5e1;
+    --muted-ink: #64748b;
 
     --cat-chest: #db2777;
     --cat-back: #2563eb;
@@ -174,10 +200,14 @@
     --cat-arms: #047857;
     --cat-core: #0e7490;
     --cat-cardio: #e11d48;
+    --cat-full-body: #9333ea;
+    --cat-mobility: #0d9488;
+    --cat-stretching: #4f46e5;
+    --cat-classes: #ea580c;
 
-    --shadow-sm: 0 1px 2px rgba(20, 20, 43, 0.06);
-    --shadow-md: 0 8px 24px rgba(20, 20, 43, 0.08);
-    --shadow-lg: 0 20px 50px rgba(20, 20, 43, 0.12);
-    --shadow-accent: 0 8px 20px rgba(91, 70, 229, 0.28);
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --shadow-md: 0 6px 18px rgba(15, 23, 42, 0.07);
+    --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
+    --shadow-accent: 0 4px 18px rgba(5, 150, 105, 0.22);
   }
 }

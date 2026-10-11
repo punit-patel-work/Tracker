@@ -503,6 +503,33 @@ function CardHeader({
       <div>
         <h3>
           {exercise.name}
+          <span
+            className="tag"
+            style={{
+              marginLeft: 8,
+              fontSize: 10.5,
+              textTransform: 'capitalize',
+              color: `var(--cat-${exercise.category}, var(--text-2))`,
+              background: `color-mix(in srgb, var(--cat-${exercise.category}, var(--accent)) 12%, var(--surface-2))`,
+              border: `1px solid color-mix(in srgb, var(--cat-${exercise.category}, var(--accent)) 25%, transparent)`,
+            }}
+          >
+            {exercise.category}
+          </span>
+          {exercise.met ? (
+            <span
+              className="tag"
+              style={{
+                marginLeft: 4,
+                fontSize: 10.5,
+                background: 'var(--surface-3)',
+                color: 'var(--text-3)',
+              }}
+              title="Activity intensity MET"
+            >
+              {exercise.met} MET
+            </span>
+          ) : null}
           <a
             className="how-to inline"
             href={exercise.howToUrl}

@@ -18,6 +18,10 @@ import cors from 'cors';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+app.use(cors({
+  origin: ['https://tracker-amber-seven.vercel.app', 'http://localhost:5173'],
+  credentials: true,
+}));
 app.use(compression()); // JSON stat payloads compress ~8x
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
@@ -75,9 +79,3 @@ const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => console.log(`[api] listening on http://localhost:${port}`));
 connectDb();
 void verifyMailer();
-
-// ✅ Use the imported cors:
-app.use(cors({
-  origin: ['https://tracker-amber-seven.vercel.app', 'http://localhost:5173'],
-  credentials: true
-}));

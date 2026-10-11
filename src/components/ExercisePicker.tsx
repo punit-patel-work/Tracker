@@ -91,12 +91,22 @@ export default function ExercisePicker({
                 <I.Search size={17} />
                 <input
                   className="input"
-                  placeholder="Search exercise, muscle or kit..."
+                  placeholder="Search 530+ exercises, muscles, equipment..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   autoFocus
                   aria-label="Search exercises"
                 />
+                {query && (
+                  <button
+                    className="affix-btn"
+                    onClick={() => setQuery('')}
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    <I.X size={14} />
+                  </button>
+                )}
               </div>
               <div className="chip-row scroll-x">
                 <button className={`chip ${category === 'all' ? 'active' : ''}`} onClick={() => setCategory('all')}>
@@ -131,8 +141,13 @@ export default function ExercisePicker({
                         <div className="pick-name">
                           {ex.name}
                           {ex.isCustom && <span className="tag small">Custom</span>}
+                          {ex.met ? <span className="tag small" title="Activity MET intensity">{ex.met} MET</span> : null}
                         </div>
                         <div className="pick-meta">
+                          <span style={{ color: `var(--cat-${ex.category}, var(--text-3))`, fontWeight: 600 }}>
+                            {ex.category}
+                          </span>
+                          {' · '}
                           {ex.equipment} · {(ex.primaryMuscles?.length ? ex.primaryMuscles : ex.muscles).join(', ')}
                         </div>
                       </div>

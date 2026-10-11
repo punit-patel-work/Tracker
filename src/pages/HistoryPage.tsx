@@ -67,6 +67,16 @@ export default function HistoryPage() {
               onChange={(e) => setQuery(e.target.value)}
               aria-label="Search history"
             />
+            {query && (
+              <button
+                className="affix-btn"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                title="Clear search"
+              >
+                <I.X size={14} />
+              </button>
+            )}
           </div>
           <button className="btn btn-ghost" onClick={() => setLogging(true)}>
             <I.Plus size={16} /> Log a past workout
