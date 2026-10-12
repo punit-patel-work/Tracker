@@ -13,6 +13,27 @@ node scripts/smoke.mjs       # 15-check end-to-end API test against a running se
 node scripts/make-icons.mjs  # regenerate the PNG app icons
 ```
 
+For UI review without a database, run `npm run preview:ui` and open
+`http://127.0.0.1:5174`. This separate development server uses synthetic workouts
+and an example account, stores changes in memory, and never connects to MongoDB.
+The preview is clearly labelled and is excluded from the production app. Add
+`?auth` for sign-in, `?empty` for an empty account, `?summary-error` for a failed
+dashboard request, or `?reset-preview` to return to the populated view.
+
+The Today dashboard pairs an original training photograph with a weekly goal ring,
+activity tiles, and routine illustrations derived from exercise categories. The
+active workout shows completed sets and exercise completion separately. See
+[design and asset notes](docs/design-assets.md) for the visual references and image prompt.
+
+The Progress page has selectable weekly charts, per-lift metric and table views,
+a daily training calendar, muscle-set breakdowns, and body-weight history. Date
+ranges include the current partial calendar week; weekly target comparisons use
+completed weeks only. A lift needs two observations within the selected range
+to show a percentage change. Inactive weeks count toward muscle-set averages.
+Run `npm run test:progress` for the date-window and comparison regression tests.
+Deploy the updated stats API with the frontend for complete weekly history and
+daily session counts; older API responses show their available coverage explicitly.
+
 ## Using it on your phone
 
 Both servers bind to the LAN, so with your phone on the same wifi:
@@ -74,7 +95,7 @@ Everything else is arranged behind that.
 - **Warm-ups are first-class.** Tap the set number to mark one. They count toward energy
   expenditure (you did move) but never toward volume or PRs.
 - **Mobile-first, and specifically phone-first.** Anything you touch mid-set is at least
-  44px. Bottom tab bar on a phone, top nav on a desktop.
+  44px. Bottom tab bar on a phone, sidebar navigation on a desktop.
 
 ## Device handling
 
@@ -85,7 +106,7 @@ Four breakpoints, each with a reason rather than a round number:
 | ≤ 359px | Tighter set grid and padding so the ✓ button never leaves the card |
 | 360–599px | Phone default: bottom tabs, single column, floating bars edge to edge |
 | 600–899px | Tablet: two-column cards, four-across stats, roomier set grid, floating bars centred |
-| ≥ 900px | Desktop: top nav, wide grids, bars docked bottom-right |
+| ≥ 900px | Desktop: sidebar navigation, wide grids, bars docked bottom-right |
 
 Plus a short-viewport rule for a phone in landscape, which unsticks the header so the
 workout screen is not all chrome.
@@ -170,17 +191,15 @@ stored total cannot drift apart.
 
 ## Charts
 
-Series colours (`#2a78d6`/`#eb6834` light, `#3987e5`/`#d95926` dark) are held apart from the
-violet brand chrome — `--accent` is UI, `--series-*` is data ink — and were validated for
-lightness band, chroma, colourblind separation and contrast against the surfaces they
-actually render on. One y-axis, no legend on single-series charts, solid hairline grid,
+Series colours use muted green and blue tokens in both themes. `--accent` is UI,
+`--series-*` is data ink. One y-axis, no legend on single-series charts, solid hairline grid,
 selective direct labels, hover tooltips, and a **table view** on every chart so no value is
 reachable by tooltip alone. Part-to-whole is a split bar, not a two-slice donut.
 
 ## Theming
 
 Light and dark are both designed, not one inverted. Tokens live in `src/styles/theme.css`
-under `:root` (dark), `:root[data-theme='light']`, and a `prefers-color-scheme: light` block
+under `:root` (light), `:root[data-theme='dark']`, and a `prefers-color-scheme: dark` block
 for anyone who never touches the toggle. `index.html` applies the stored choice before first
 paint.
 

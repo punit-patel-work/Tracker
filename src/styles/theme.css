@@ -1,228 +1,163 @@
-/*
- * Design tokens.
- * Built with the Realtime Colors 5-token palette system and Watermelon UI / Shadcn design conventions:
- * Text, Background, Primary (Electric Emerald), Secondary (Layered Obsidian/Slate), Accent (Radiant Amber).
- *
- * Strict contrast ratios:
- * - High-contrast text on solid surfaces.
- * - Tabular numbers for weights, reps, rest timers, and volume graphs.
- * - Studio-grade athletic aesthetic, removing generic AI "vibecoded" purple gradients.
- */
-
+/* Shared colour, geometry and motion tokens. Light and dark use the same hierarchy. */
 :root {
-  color-scheme: dark;
-
-  /* Realtime Colors: Canvas & Background */
-  --page: #090a0f;
-  --page-glow-a: rgba(0, 229, 153, 0.03);
-  --page-glow-b: rgba(56, 189, 248, 0.02);
-
-  /* Realtime Colors: Secondary / Surface Architecture */
-  --surface: #111319;
-  --surface-2: #171a22;
-  --surface-3: #1f232e;
-  --surface-inset: #0c0d12;
-
-  /* Borders & Elevational Focus */
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.15);
-  --border-hover: rgba(255, 255, 255, 0.22);
-  --ring: rgba(0, 229, 153, 0.38);
-
-  /* Realtime Colors: Text Hierarchy */
-  --text: #f8fafc;
-  --text-2: #94a3b8;
-  --text-3: #64748b;
-
-  /* Realtime Colors: Primary Athletic Brand (Electric Emerald) */
-  --accent: #00e599;
-  --accent-hover: #05f2a5;
-  --accent-soft: rgba(0, 229, 153, 0.12);
-  --accent-ink: #04150e;
-  --accent-text: #00e599;
-
-  /* Brand Logo Tokens */
-  --logo-bg-start: #141722;
-  --logo-bg-end: #090a0f;
-  --logo-chevron: #ffffff;
-
-  /* Realtime Colors: Signal & Status Accents */
-  --danger: #f43f5e;
-  --danger-soft: rgba(244, 63, 94, 0.14);
-  --good: #00e599;
-  --good-soft: rgba(0, 229, 153, 0.14);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.14);
-
-  /* Chart Ink (Precision Data Visualization) */
-  --series-1: #00e599;
-  --series-2: #38bdf8;
-  --grid: rgba(255, 255, 255, 0.06);
-  --axis: rgba(255, 255, 255, 0.12);
-  --muted-ink: #64748b;
-  --seq-100: #d1fae5;
-  --seq-250: #6ee7b7;
-  --seq-400: #00e599;
-  --seq-550: #059669;
-  --seq-700: #064e3b;
-
-  /* Category Chrome Tokens (11 Core Gym & Activity Categories) */
-  --cat-chest: #ec4899;
-  --cat-back: #3b82f6;
-  --cat-legs: #f59e0b;
-  --cat-shoulders: #8b5cf6;
-  --cat-arms: #10b981;
-  --cat-core: #06b6d4;
-  --cat-cardio: #f43f5e;
-  --cat-full-body: #a855f7;
-  --cat-mobility: #14b8a6;
-  --cat-stretching: #6366f1;
-  --cat-classes: #f97316;
-
-  /* Shadow & Glow Elevational Hierarchy */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
-  --shadow-accent: 0 4px 22px rgba(0, 229, 153, 0.26);
-
-  /* Geometry & Radius Scaling */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-xl: 22px;
-  --r-pill: 999px;
-}
-
-:root[data-theme='light'] {
   color-scheme: light;
-
-  --page: #f8fafc;
-  --page-glow-a: rgba(0, 229, 153, 0.04);
-  --page-glow-b: rgba(56, 189, 248, 0.03);
-
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --page: #f7f8f7;
   --surface: #ffffff;
-  --surface-2: #f1f5f9;
-  --surface-3: #e2e8f0;
-  --surface-inset: #f8fafc;
-
-  --border: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.16);
-  --border-hover: rgba(15, 23, 42, 0.24);
-  --ring: rgba(5, 150, 105, 0.35);
-
-  --text: #0f172a;
-  --text-2: #475569;
-  --text-3: #64748b;
-
-  --accent: #059669;
-  --accent-hover: #047857;
-  --accent-soft: rgba(5, 150, 105, 0.1);
+  --surface-2: #f2f4f2;
+  --surface-3: #e8ede9;
+  --surface-inset: #f8faf8;
+  --border: #e3e8e4;
+  --border-strong: #cbd4ce;
+  --border-hover: #aabbb0;
+  --ring: #3a8965;
+  --text: #202a24;
+  --text-2: #546159;
+  --text-3: #65716a;
+  --accent: #26734f;
+  --accent-hover: #1c5d3e;
+  --accent-soft: #eaf3ed;
   --accent-ink: #ffffff;
-  --accent-text: #059669;
-
-  /* Brand Logo Tokens */
-  --logo-bg-start: #ffffff;
-  --logo-bg-end: #f1f5f9;
-  --logo-chevron: #04150e;
-
-  --danger: #e11d48;
-  --danger-soft: rgba(225, 29, 72, 0.1);
-  --good: #059669;
-  --good-soft: rgba(5, 150, 105, 0.1);
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.1);
-
-  --series-1: #059669;
-  --series-2: #0284c7;
-  --grid: #e2e8f0;
-  --axis: #cbd5e1;
-  --muted-ink: #64748b;
-  --seq-100: #d1fae5;
-  --seq-250: #6ee7b7;
-  --seq-400: #059669;
-  --seq-550: #047857;
-  --seq-700: #064e3b;
-
-  --cat-chest: #db2777;
-  --cat-back: #2563eb;
-  --cat-legs: #b45309;
-  --cat-shoulders: #7c3aed;
-  --cat-arms: #047857;
-  --cat-core: #0e7490;
-  --cat-cardio: #e11d48;
-  --cat-full-body: #9333ea;
-  --cat-mobility: #0d9488;
-  --cat-stretching: #4f46e5;
-  --cat-classes: #ea580c;
-
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 6px 18px rgba(15, 23, 42, 0.07);
-  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
-  --shadow-accent: 0 4px 18px rgba(5, 150, 105, 0.22);
+  --accent-text: #26734f;
+  --danger: #bd3842;
+  --danger-soft: #fceef0;
+  --good: #26734f;
+  --good-soft: #eaf3ed;
+  --warning: #926522;
+  --warning-soft: #faf3e5;
+  --series-1: #347f5b;
+  --series-2: #507cac;
+  --grid: #e8ede9;
+  --axis: #cbd4ce;
+  --muted-ink: #65716a;
+  --seq-100: #e6f1e9;
+  --seq-250: #bfd9c8;
+  --seq-400: #83b498;
+  --seq-550: #4e9069;
+  --seq-700: #246441;
+  --cat-chest: #a05e79;
+  --cat-back: #517aa4;
+  --cat-legs: #96742e;
+  --cat-shoulders: #7968a2;
+  --cat-arms: #428068;
+  --cat-core: #3f8291;
+  --cat-cardio: #a75862;
+  --cat-full-body: #8969a0;
+  --cat-mobility: #398478;
+  --cat-stretching: #6875a0;
+  --cat-classes: #a36e43;
+  --shadow-sm: 0 1px 2px #17291b04;
+  --shadow-md: 0 4px 16px #17291b08;
+  --shadow-lg: 0 16px 48px #17291b18;
+  --shadow-accent: none;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-pill: 999px;
+  --speed-fast: 150ms;
 }
 
-/* No stored preference: follow OS. */
-@media (prefers-color-scheme: light) {
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #141815;
+  --surface: #1c221e;
+  --surface-2: #242c26;
+  --surface-3: #313b33;
+  --surface-inset: #181e1a;
+  --border: #303a32;
+  --border-strong: #455249;
+  --border-hover: #627568;
+  --ring: #accfb9;
+  --text: #edf2ee;
+  --text-2: #b4c0b7;
+  --text-3: #9cac9f;
+  --accent: #a8cdb7;
+  --accent-hover: #bfddca;
+  --accent-soft: #283d2f;
+  --accent-ink: #15291d;
+  --accent-text: #a8cdb7;
+  --danger: #f28e98;
+  --danger-soft: #40292d;
+  --good: #a8cdb7;
+  --good-soft: #283d2f;
+  --warning: #ddbb7e;
+  --warning-soft: #3c3425;
+  --series-1: #a8cdb7;
+  --series-2: #90b4d6;
+  --grid: #303a32;
+  --axis: #455249;
+  --muted-ink: #9cac9f;
+  --seq-100: #243b2d;
+  --seq-250: #375840;
+  --seq-400: #4f7d5c;
+  --seq-550: #85b695;
+  --seq-700: #baddc5;
+  --cat-chest: #d49bb2;
+  --cat-back: #91b4d6;
+  --cat-legs: #cfb078;
+  --cat-shoulders: #b5a5d4;
+  --cat-arms: #8abfa7;
+  --cat-core: #8bc0cb;
+  --cat-cardio: #d59a9f;
+  --cat-full-body: #c0a0d2;
+  --cat-mobility: #8bc1b6;
+  --cat-stretching: #a1aed5;
+  --cat-classes: #d5ad8d;
+  --shadow-sm: 0 1px 2px #00000008;
+  --shadow-md: 0 4px 16px #00000012;
+  --shadow-lg: 0 16px 48px #00000035;
+}
+
+@media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    color-scheme: light;
-
-    --page: #f8fafc;
-    --page-glow-a: rgba(0, 229, 153, 0.04);
-    --page-glow-b: rgba(56, 189, 248, 0.03);
-
-    --surface: #ffffff;
-    --surface-2: #f1f5f9;
-    --surface-3: #e2e8f0;
-    --surface-inset: #f8fafc;
-
-    --border: rgba(15, 23, 42, 0.08);
-    --border-strong: rgba(15, 23, 42, 0.16);
-    --border-hover: rgba(15, 23, 42, 0.24);
-    --ring: rgba(5, 150, 105, 0.35);
-
-    --text: #0f172a;
-    --text-2: #475569;
-    --text-3: #64748b;
-
-    --accent: #059669;
-    --accent-hover: #047857;
-    --accent-soft: rgba(5, 150, 105, 0.1);
-    --accent-ink: #ffffff;
-    --accent-text: #059669;
-
-    /* Brand Logo Tokens */
-    --logo-bg-start: #ffffff;
-    --logo-bg-end: #f1f5f9;
-    --logo-chevron: #04150e;
-
-    --danger: #e11d48;
-    --danger-soft: rgba(225, 29, 72, 0.1);
-    --good: #059669;
-    --good-soft: rgba(5, 150, 105, 0.1);
-    --warning: #d97706;
-    --warning-soft: rgba(217, 119, 6, 0.1);
-
-    --series-1: #059669;
-    --series-2: #0284c7;
-    --grid: #e2e8f0;
-    --axis: #cbd5e1;
-    --muted-ink: #64748b;
-
-    --cat-chest: #db2777;
-    --cat-back: #2563eb;
-    --cat-legs: #b45309;
-    --cat-shoulders: #7c3aed;
-    --cat-arms: #047857;
-    --cat-core: #0e7490;
-    --cat-cardio: #e11d48;
-    --cat-full-body: #9333ea;
-    --cat-mobility: #0d9488;
-    --cat-stretching: #4f46e5;
-    --cat-classes: #ea580c;
-
-    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-    --shadow-md: 0 6px 18px rgba(15, 23, 42, 0.07);
-    --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
-    --shadow-accent: 0 4px 18px rgba(5, 150, 105, 0.22);
+    color-scheme: dark;
+    --page: #141815;
+    --surface: #1c221e;
+    --surface-2: #242c26;
+    --surface-3: #313b33;
+    --surface-inset: #181e1a;
+    --border: #303a32;
+    --border-strong: #455249;
+    --border-hover: #627568;
+    --ring: #accfb9;
+    --text: #edf2ee;
+    --text-2: #b4c0b7;
+    --text-3: #9cac9f;
+    --accent: #a8cdb7;
+    --accent-hover: #bfddca;
+    --accent-soft: #283d2f;
+    --accent-ink: #15291d;
+    --accent-text: #a8cdb7;
+    --danger: #f28e98;
+    --danger-soft: #40292d;
+    --good: #a8cdb7;
+    --good-soft: #283d2f;
+    --warning: #ddbb7e;
+    --warning-soft: #3c3425;
+    --series-1: #a8cdb7;
+    --series-2: #90b4d6;
+    --grid: #303a32;
+    --axis: #455249;
+    --muted-ink: #9cac9f;
+    --seq-100: #243b2d;
+    --seq-250: #375840;
+    --seq-400: #4f7d5c;
+    --seq-550: #85b695;
+    --seq-700: #baddc5;
+    --cat-chest: #d49bb2;
+    --cat-back: #91b4d6;
+    --cat-legs: #cfb078;
+    --cat-shoulders: #b5a5d4;
+    --cat-arms: #8abfa7;
+    --cat-core: #8bc0cb;
+    --cat-cardio: #d59a9f;
+    --cat-full-body: #c0a0d2;
+    --cat-mobility: #8bc1b6;
+    --cat-stretching: #a1aed5;
+    --cat-classes: #d5ad8d;
+    --shadow-sm: 0 1px 2px #00000008;
+    --shadow-md: 0 4px 16px #00000012;
+    --shadow-lg: 0 16px 48px #00000035;
   }
 }

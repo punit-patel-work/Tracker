@@ -76,35 +76,33 @@ export default function Auth({ themeToggle }: { themeToggle: ReactNode }) {
       <div className="auth-theme">{themeToggle}</div>
 
       <aside className="auth-pitch">
-        <Logo size={60} variant="mark" />
-        <h1>
-          Track the lift,
-          <br />
-          not the spreadsheet.
-        </h1>
+        <Logo size={36} showSub={false} />
+        <div className="auth-pitch-body">
+        <span className="eyebrow">A journal for the work you put in</span>
+        <h1>A stronger you.<br />One session<br />at a time.</h1>
         <p>
-          Log a set in two taps, see what you lifted last time before you load the bar, and let the calorie maths take
-          care of itself.
+          A simple place to plan your training, log your lifts, and see how far you’ve come.
         </p>
         <ul className="auth-points">
           <li>
-            <I.Repeat size={17} /> Every set prefilled from last session
+            <I.Repeat size={17} /> Pick up where you left off
           </li>
           <li>
-            <I.Timer size={17} /> Rest timer that keeps running while you scroll
+            <I.Timer size={17} /> Stay focused between sets
           </li>
           <li>
-            <I.Trophy size={17} /> Personal records spotted automatically
-          </li>
-          <li>
-            <I.Flame size={17} /> Calorie burn from real MET values, not guesses
+            <I.Trophy size={17} /> Celebrate every new personal best
           </li>
         </ul>
+        </div>
+        <span className="auth-pitch-foot">Small steps. Lasting progress.</span>
       </aside>
 
       <main className="auth-panel">
         <form className="auth-card" onSubmit={submit}>
+          <div className="auth-mobile-brand mobile-only"><Logo size={34} showSub={false} /></div>
           <div className="auth-card-head">
+            <span className="eyebrow">Your training journal</span>
             <h2>{heading}</h2>
             <p className="muted">{blurb}</p>
           </div>
@@ -130,6 +128,7 @@ export default function Auth({ themeToggle }: { themeToggle: ReactNode }) {
                 id="au-email"
                 className="input"
                 type="email"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
@@ -146,6 +145,7 @@ export default function Auth({ themeToggle }: { themeToggle: ReactNode }) {
                 id="au-pw"
                 className="input"
                 type={showPw ? 'text' : 'password'}
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}

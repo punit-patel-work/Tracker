@@ -7,7 +7,7 @@
  * tooltips on every mark, and a table view twin so no value is reachable by
  * tooltip alone.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { num } from '../lib/format';
 
 /* ----------------------------------------------------------------- frame */
@@ -118,6 +118,21 @@ export interface Point {
   value: number;
 }
 
+/** Match the drawing coordinates to the container so phone labels remain readable. */
+function useChartWidth() {
+  const [element, ref] = useState<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(720);
+  useEffect(() => {
+    if (!element) return;
+    const update = () => setWidth(Math.max(200, Math.round(element.getBoundingClientRect().width)));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return { ref, width };
+}
+
 export function LineChart({
   points,
   unit = '',
@@ -128,7 +143,8 @@ export function LineChart({
   height?: number;
 }) {
   const [hover, setHover] = useState<Hover | null>(null);
-  const W = 720;
+  const { ref, width: W } = useChartWidth();
+  const fillId = useId();
   const H = height;
   const pad = { top: 16, right: 22, bottom: 34, left: 48 };
   const iw = W - pad.left - pad.right;
@@ -146,13 +162,13 @@ export function LineChart({
   const last = points[points.length - 1];
 
   // Thin out x labels so they never collide.
-  const stride = Math.ceil(points.length / 6);
+  const stride = Math.max(1, Math.ceil(points.length / Math.max(1, Math.floor(iw / 100) - 1)));
 
   return (
-    <div className="chart-holder">
+    <div ref={ref} className="chart-holder">
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Progression over time">
         <defs>
-          <linearGradient id="line-fill" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--series-1)" stopOpacity="0.22" />
             <stop offset="100%" stopColor="var(--series-1)" stopOpacity="0" />
           </linearGradient>
@@ -167,7 +183,7 @@ export function LineChart({
           </g>
         ))}
 
-        <path d={area} fill="url(#line-fill)" />
+        <path d={area} fill={`url(#${fillId})`} />
         <path d={line} fill="none" stroke="var(--series-1)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
 
         {points.map((p, i) => (
@@ -204,8 +220,8 @@ export function LineChart({
         <line className="chart-axis-line" x1={pad.left} x2={W - pad.right} y1={pad.top + ih} y2={pad.top + ih} />
 
         {points.map((p, i) =>
-          i % stride === 0 || i === points.length - 1 ? (
-            <text key={`x-${i}`} className="chart-tick" x={x(i)} y={H - 12} textAnchor="middle">
+          (i % stride === 0 && points.length - 1 - i >= stride / 2) || i === points.length - 1 ? (
+            <text key={`x-${i}`} className="chart-tick" x={x(i)} y={H - 12} textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}>
               {p.label}
             </text>
           ) : null,
@@ -228,7 +244,7 @@ export function BarChart({
   height?: number;
 }) {
   const [hover, setHover] = useState<Hover | null>(null);
-  const W = 720;
+  const { ref, width: W } = useChartWidth();
   const H = height;
   const pad = { top: 16, right: 16, bottom: 38, left: 54 };
   const iw = W - pad.left - pad.right;
@@ -239,12 +255,12 @@ export function BarChart({
   const scale = niceScale(bars.map((b) => b.value), true);
   const slot = iw / bars.length;
   // A 2px surface gap between adjacent fills, never a stroke around the mark.
-  const bw = Math.min(56, slot - 12);
+  const bw = Math.max(2, Math.min(56, slot * 0.68));
   const y = (v: number) => pad.top + ih - (v / (scale.max || 1)) * ih;
-  const stride = Math.ceil(bars.length / 8);
+  const stride = Math.max(1, Math.ceil(bars.length / Math.max(1, Math.floor(iw / 100) - 1)));
 
   return (
-    <div className="chart-holder">
+    <div ref={ref} className="chart-holder">
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Totals by period">
         {scale.ticks.map((t) => (
           <g key={t}>
@@ -287,13 +303,13 @@ export function BarChart({
         <line className="chart-axis-line" x1={pad.left} x2={W - pad.right} y1={pad.top + ih} y2={pad.top + ih} />
 
         {bars.map((b, i) =>
-          i % stride === 0 || i === bars.length - 1 ? (
+          (i % stride === 0 && bars.length - 1 - i >= stride / 2) || i === bars.length - 1 ? (
             <text
               key={`bx-${i}`}
               className="chart-tick"
               x={pad.left + slot * i + slot / 2}
               y={H - 14}
-              textAnchor="middle"
+              textAnchor={i === 0 ? 'start' : i === bars.length - 1 ? 'end' : 'middle'}
             >
               {b.label}
             </text>

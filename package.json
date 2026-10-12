@@ -9,7 +9,9 @@
     "dev:web": "vite --host",
     "build": "tsc -b && vite build",
     "start": "node server/index.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:ui": "node scripts/preview-ui.mjs",
+    "test:progress": "node --test scripts/progress.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

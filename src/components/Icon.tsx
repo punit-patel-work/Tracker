@@ -168,6 +168,10 @@ export const TrendingUp = (p: Props) => (
   </svg>
 );
 
+export const Refresh = (p: Props) => (
+  <svg {...base(p)}><path d="M20 11a8 8 0 0 0-14-5L3 9M3 3v6h6M4 13a8 8 0 0 0 14 5l3-3M15 15h6v6" /></svg>
+);
+
 export const Sparkles = (p: Props) => (
   <svg {...base(p)}>
     <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />

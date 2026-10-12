@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Exercise, Session } from '../models.js';
 import { requireAuth } from '../auth.js';
+import { progressRangeStart } from '../../shared/progress.js';
 import {
   bestE1rm,
   effectiveLoadKg,
@@ -23,6 +24,9 @@ router.use(requireAuth);
  * `entries` array at all.
  */
 router.get('/overview', async (req, res) => {
+  const today = localToday();
+  const rangeWeeks = Math.floor(Math.min(Math.max(Number(req.query.weeks) || 12, 4), 260));
+  const from = progressRangeStart(today, rangeWeeks);
   const cutoff28 = shiftDays(localToday(), -28);
 
   const [light, recent, forPrs] = await Promise.all([
@@ -43,8 +47,8 @@ router.get('/overview', async (req, res) => {
   const exDocs = await Exercise.find({ _id: { $in: exIds } }).lean();
   const byId = new Map(exDocs.map((d) => [String(d._id), d]));
 
-  const sessions = forPrs;
-  const perSession = light.map((s) => ({ date: s.date, totals: normaliseTotals(s.totals) }));
+  const sessions = forPrs.filter((session) => session.date <= today);
+  const perSession = light.filter((session) => session.date <= today).map((s) => ({ date: s.date, totals: normaliseTotals(s.totals) }));
 
   // Weekly buckets
   const weeks = new Map();
@@ -59,7 +63,8 @@ router.get('/overview', async (req, res) => {
     row.sessions += 1;
     weeks.set(k, row);
   }
-  const weekly = [...weeks.values()].sort((a, b) => a.week.localeCompare(b.week)).slice(-12);
+  const weeklyHistory = [...weeks.values()].filter((row) => row.week <= today).sort((a, b) => a.week.localeCompare(b.week));
+  const weekly = weeklyHistory.filter((row) => row.week >= from);
 
   const thisWeekKey = weekKey(localToday());
   const lastWeekKey = weekKey(shiftDays(localToday(), -7));
@@ -77,7 +82,12 @@ router.get('/overview', async (req, res) => {
 
   // Daily energy for the consistency grid
   const daily = {};
-  for (const { date, totals } of perSession) daily[date] = (daily[date] ?? 0) + totals.totalKcal;
+  const dailySessions = {};
+  for (const { date, totals } of perSession) {
+    if (date > today) continue;
+    daily[date] = (daily[date] ?? 0) + totals.totalKcal;
+    dailySessions[date] = (dailySessions[date] ?? 0) + 1;
+  }
 
   const prs = personalRecords(sessions, byId).sort((a, b) => b.bestE1rm - a.bestE1rm);
 
@@ -90,8 +100,6 @@ router.get('/overview', async (req, res) => {
    * hard sets per muscle per week (the hypertrophy dose), and adherence.
    * ------------------------------------------------------------------ */
 
-  const rangeWeeks = Math.min(Math.max(Number(req.query.weeks) || 12, 4), 260);
-  const from = shiftDays(localToday(), -rangeWeeks * 7);
 
   // Per-lift strength trend inside the window.
   const perLift = new Map();
@@ -112,8 +120,8 @@ router.get('/overview', async (req, res) => {
 
   const lifts = [...perLift.values()]
     .map((l) => {
-      const inRange = l.points.filter((p) => p.date >= from);
-      const pts = inRange.length >= 2 ? inRange : l.points.slice(-2);
+      const inRange = l.points.filter((p) => p.date >= from && p.date <= today);
+      const pts = inRange;
       const first = pts[0]?.e1rm ?? 0;
       const last = pts[pts.length - 1]?.e1rm ?? 0;
       const best = Math.max(...l.points.map((p) => p.e1rm));
@@ -133,6 +141,7 @@ router.get('/overview', async (req, res) => {
         relative: currentWeight > 0 ? Math.round((best / currentWeight) * 100) / 100 : 0,
       };
     })
+    .filter((lift) => lift.sessions > 0)
     .sort((a, b) => b.deltaPct - a.deltaPct);
 
   /**
@@ -142,7 +151,7 @@ router.get('/overview', async (req, res) => {
    */
   const setsByWeek = new Map();
   for (const s of sessions) {
-    if (s.date < from) continue;
+    if (s.date < from || s.date > today) continue;
     const wk = weekKey(s.date);
     const row = setsByWeek.get(wk) ?? {};
     for (const e of s.entries ?? []) {
@@ -160,7 +169,7 @@ router.get('/overview', async (req, res) => {
   for (const row of setsByWeek.values()) {
     for (const [m, n] of Object.entries(row)) muscleTotals[m] = (muscleTotals[m] ?? 0) + n;
   }
-  const weeksCounted = Math.max(1, weekKeys.length);
+  const weeksCounted = rangeWeeks;
   const avgSetsPerMuscle = Object.fromEntries(
     Object.entries(muscleTotals)
       .map(([m, n]) => [m, Math.round((n / weeksCounted) * 10) / 10])
@@ -168,7 +177,7 @@ router.get('/overview', async (req, res) => {
   );
 
   // Adherence: how often you actually turned up, against your own target.
-  const sessionsInRange = light.filter((s) => s.date >= from).length;
+  const sessionsInRange = light.filter((s) => s.date >= from && s.date <= today).length;
   const consistency = {
     weeks: rangeWeeks,
     sessionsInRange,
@@ -194,7 +203,7 @@ router.get('/overview', async (req, res) => {
   }
   trackable.sort((a, b) => b.sessions - a.sessions);
 
-  const totals = perSession.reduce(
+  const totals = perSession.filter((s) => s.date >= from && s.date <= today).reduce(
     (acc, p) => ({
       volumeKg: acc.volumeKg + p.totals.volumeKg,
       kcal: acc.kcal + p.totals.totalKcal,
@@ -219,10 +228,12 @@ router.get('/overview', async (req, res) => {
     currentWeightKg: currentWeight,
     totals,
     weekly,
+    weeklyHistory,
     thisWeek: weeks.get(thisWeekKey) ?? blank,
     lastWeek: weeks.get(lastWeekKey) ?? blank,
     muscleVolume,
     daily,
+    dailySessions,
     prs: prs.slice(0, 12),
     trackable: trackable.slice(0, 40),
     bodyWeight: req.user.weighIns.map((w) => ({ date: w.date, kg: w.kg })),

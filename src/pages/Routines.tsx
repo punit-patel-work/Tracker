@@ -6,6 +6,7 @@ import { relativeDay, todayISO } from '../lib/format';
 import ExercisePicker from '../components/ExercisePicker';
 import * as I from '../components/Icon';
 import type { Routine, RoutineExercise } from '../lib/types';
+import TrainingArtwork, { trainingFocus, focusLabels } from '../components/TrainingArtwork';
 
 /**
  * Routines are the organising idea, not a per-category exercise switchboard.
@@ -17,6 +18,7 @@ export default function Routines({ go }: { go: (page: string) => void }) {
   const { start, session } = useWorkout();
   const [editing, setEditing] = useState<Routine | 'new' | null>(null);
   const [busy, setBusy] = useState('');
+  const [startError, setStartError] = useState('');
 
   if (editing) {
     return (
@@ -33,22 +35,25 @@ export default function Routines({ go }: { go: (page: string) => void }) {
 
   const begin = async (r: Routine) => {
     setBusy(r.id);
+    setStartError('');
     try {
       await start({ routineId: r.id });
       go('workout');
+    } catch (error) {
+      setStartError(error instanceof Error ? error.message : 'Could not start your workout. Please try again.');
     } finally {
       setBusy('');
     }
   };
 
   return (
-    <div className="stack">
+    <div className="stack routines-page">
       <div className="page-head">
         <div>
           <h2 className="page-title">
             <I.Layers size={24} /> Routines
           </h2>
-          <p className="page-sub">Your training days. Starting one queues every exercise with your last numbers.</p>
+          <p className="page-sub">Find your focus. Pick your session. Make it count.</p>
         </div>
         <div className="page-head-actions">
           <button className="btn btn-primary" onClick={() => setEditing('new')}>
@@ -56,6 +61,7 @@ export default function Routines({ go }: { go: (page: string) => void }) {
           </button>
         </div>
       </div>
+      {startError && <div className="dashboard-error" role="alert"><I.Info size={18} />{startError}</div>}
 
       {routines.length === 0 && (
         <div className="card empty">
@@ -66,14 +72,14 @@ export default function Routines({ go }: { go: (page: string) => void }) {
       )}
 
       <div className="grid-2">
-        {routines.map((r) => (
-          <section key={r.id} className="card card-pad routine-card">
+        {routines.map((r) => { const focus = trainingFocus(r, byId); return (
+          <section key={r.id} className={`card card-pad routine-card focus-${focus}`}>
+            <div className="routine-banner"><div><span className="eyebrow">{focusLabels[focus]}</span><h3>{r.name}</h3><span>{r.exercises.length} exercises</span></div><TrainingArtwork focus={focus} /></div>
             <div className="card-head">
               <div>
-                <h3>{r.name}</h3>
+                <h4>Session plan</h4>
                 <p>
-                  {r.exercises.length} exercises ·{' '}
-                  {r.lastPerformedAt ? `last done ${relativeDay(todayISO(new Date(r.lastPerformedAt)))}` : 'never done'}
+                  {r.lastPerformedAt ? `Last done ${relativeDay(todayISO(new Date(r.lastPerformedAt)))}` : 'Ready for your first session'}
                 </p>
               </div>
               <div className="card-head-actions">
@@ -108,7 +114,7 @@ export default function Routines({ go }: { go: (page: string) => void }) {
               <I.Play size={15} /> {busy === r.id ? 'Starting…' : session ? 'Workout in progress' : 'Start this routine'}
             </button>
           </section>
-        ))}
+        ); })}
       </div>
     </div>
   );

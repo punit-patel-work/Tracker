@@ -79,8 +79,7 @@ export default function ProfilePage() {
               <I.Scale size={19} /> Body weight
             </h3>
             <p>
-              Logged as a dated entry. Past workouts keep the weight you were on the day, so old calorie figures never
-              change under you.
+              Keep your energy estimates up to date. Previous workouts retain their original body weight.
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES, useApp } from '../state/app';
 import { api } from '../lib/api';
 import * as I from './Icon';
@@ -25,18 +25,34 @@ export default function ExercisePicker({
   const [category, setCategory] = useState<string>('all');
   const [creating, setCreating] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef(document.activeElement as HTMLElement | null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   // Escape closes the sheet, and the page behind it must not scroll.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    sheetRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const controls = Array.from(sheetRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)',
+      ) ?? []).filter((element) => element.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
+      if (returnFocus.current?.isConnected) returnFocus.current.focus();
     };
-  }, [onClose]);
+  }, []);
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -65,7 +81,7 @@ export default function ExercisePicker({
 
   return (
     <div className="sheet-backdrop" onClick={onClose} role="presentation">
-      <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Add exercise">
+      <div ref={sheetRef} className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add exercise">
         <div className="sheet-grip" aria-hidden />
         <div className="sheet-head">
           <h3>Add exercise</h3>
@@ -91,7 +107,7 @@ export default function ExercisePicker({
                 <I.Search size={17} />
                 <input
                   className="input"
-                  placeholder="Search 530+ exercises, muscles, equipment..."
+                  placeholder="Search exercises, muscles, equipment…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   autoFocus
@@ -141,14 +157,13 @@ export default function ExercisePicker({
                         <div className="pick-name">
                           {ex.name}
                           {ex.isCustom && <span className="tag small">Custom</span>}
-                          {ex.met ? <span className="tag small" title="Activity MET intensity">{ex.met} MET</span> : null}
                         </div>
-                        <div className="pick-meta">
-                          <span style={{ color: `var(--cat-${ex.category}, var(--text-3))`, fontWeight: 600 }}>
-                            {ex.category}
+                        <div className="pick-meta" title={(ex.primaryMuscles?.length ? ex.primaryMuscles : ex.muscles).join(', ')}>
+                          <span>
+                            {CATEGORIES.find((c) => c.id === ex.category)?.name ?? ex.category}
                           </span>
                           {' · '}
-                          {ex.equipment} · {(ex.primaryMuscles?.length ? ex.primaryMuscles : ex.muscles).join(', ')}
+                          {ex.equipment}
                         </div>
                       </div>
                       <span className="pick-action">{used ? <I.Check size={18} /> : <I.Plus size={18} />}</span>

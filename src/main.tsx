@@ -4,6 +4,8 @@ import App from './App';
 import { AppProvider } from './state/app';
 import { WorkoutProvider } from './state/workout';
 import './styles/app.css';
+import './styles/ui.css';
+import './styles/training.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

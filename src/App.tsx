@@ -20,7 +20,7 @@ import { Logo } from './components/Logo';
 type Page = 'home' | 'workout' | 'routines' | 'history' | 'progress' | 'profile';
 
 const NAV: { id: Page; label: string; short: string; icon: ComponentType<{ size?: number }> }[] = [
-  { id: 'home', label: 'Home', short: 'Home', icon: I.Home },
+  { id: 'home', label: 'Today', short: 'Today', icon: I.Home },
   { id: 'routines', label: 'Routines', short: 'Routines', icon: I.Layers },
   { id: 'history', label: 'History', short: 'History', icon: I.History },
   { id: 'progress', label: 'Progress', short: 'Progress', icon: I.BarChart },
@@ -113,6 +113,8 @@ function Shell({ themeToggle }: { themeToggle: React.ReactNode }) {
 
   const units = user?.units ?? 'metric';
   const showMiniBar = !!w.session && page !== 'workout';
+  const section = page === 'workout' ? 'Active workout' : NAV.find((item) => item.id === page)?.label;
+  const initials = user?.name.split(/\s+/).filter(Boolean).slice(0, 2).map((name) => name[0]).join('').toUpperCase();
 
   return (
     <div
@@ -120,42 +122,58 @@ function Shell({ themeToggle }: { themeToggle: React.ReactNode }) {
         keyboardOpen ? 'keyboard-open' : ''
       }`}
     >
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <aside className="sidebar desktop-only">
+        <button className="brand sidebar-brand" onClick={() => go('home')} aria-label="Gym Tracker Home">
+          <Logo size={34} showSub={false} />
+        </button>
+        <span className="nav-caption">Your training</span>
+        <nav className="nav" aria-label="Sections">
+          {NAV.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`}
+                onClick={() => go(item.id)} aria-current={page === item.id ? 'page' : undefined}>
+                <Icon size={18} />{item.label}
+                {page === item.id && <span className="nav-active-dot" aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </nav>
+        {w.session && (
+          <button className="sidebar-session" onClick={() => go('workout')}>
+            <span className="pulse" aria-hidden="true" />
+            <div><strong>Workout in progress</strong><span>Back to your session</span></div>
+            <I.ChevronRight size={16} />
+          </button>
+        )}
+        <div className="sidebar-bottom">
+          <div className="sidebar-note"><I.Dumbbell size={19} /><p>One session at a time.<br /><span>Make it count.</span></p></div>
+          <button className="sidebar-account" onClick={() => go('profile')}>
+            <span className="avatar" aria-hidden="true">{initials}</span>
+            <span><strong>{user?.name}</strong><small>Account & preferences</small></span>
+            <I.ChevronRight size={15} />
+          </button>
+        </div>
+      </aside>
       <header className="header">
         <div className="header-inner">
-          <button className="brand" onClick={() => go('home')} aria-label="Gym Tracker Home">
-            <Logo size={36} showSub={true} />
+          <button className="brand mobile-only" onClick={() => go('home')} aria-label="Gym Tracker Home">
+            <Logo size={30} showSub={false} />
           </button>
 
-          <nav className="nav desktop-only" aria-label="Sections">
-            {NAV.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  className={`nav-item ${page === item.id ? 'active' : ''}`}
-                  onClick={() => go(item.id)}
-                  aria-current={page === item.id ? 'page' : undefined}
-                >
-                  <Icon size={17} />
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
+          <div className="header-location desktop-only"><span>My training</span><I.ChevronRight size={14} /><strong>{section}</strong></div>
 
           <div className="header-actions">
+            <span className="header-date desktop-only"><I.Calendar size={15} />{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
             {themeToggle}
-            <button className="user-chip desktop-only" onClick={() => go('profile')}>
-              <I.User size={16} />
-              {user?.name?.split(' ')[0]}
-            </button>
           </div>
         </div>
       </header>
 
       <div className="shell">
         <VerifyBanner />
-        <main>
+        <main id="main-content" tabIndex={-1}>
           {page === 'home' && <Home go={go} />}
           {page === 'workout' && <Workout go={go} />}
           {page === 'routines' && <Routines go={go} />}

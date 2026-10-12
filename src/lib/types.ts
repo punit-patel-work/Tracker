@@ -194,6 +194,9 @@ export interface Overview {
     minutes: number;
   };
   weekly: WeekRow[];
+  /** Full weekly history, available on updated API versions. */
+  weeklyHistory?: WeekRow[];
+  dailySessions?: Record<string, number>;
   thisWeek: WeekRow;
   lastWeek: WeekRow;
   muscleVolume: Record<string, number>;

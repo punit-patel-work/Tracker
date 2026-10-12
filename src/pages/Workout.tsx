@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../state/app';
+import { CATEGORIES, useApp } from '../state/app';
 import { useWorkout } from '../state/workout';
 import {
   clock,
@@ -48,6 +48,9 @@ export default function Workout({ go }: { go: (page: string) => void }) {
   }
 
   const elapsed = now - new Date(w.session.startedAt).getTime();
+  const loggedSets = w.entries.reduce((count, entry) => count + entry.sets.filter((set) => set.done && !set.isWarmup).length, 0);
+  const completedExercises = w.entries.filter((entry) => byId.get(entry.exerciseId)?.type === 'cardio'
+    ? entry.cardio?.done : entry.sets.length > 0 && entry.sets.every((set) => set.done)).length;
 
   const finish = async () => {
     setFinishError('');
@@ -93,8 +96,8 @@ export default function Workout({ go }: { go: (page: string) => void }) {
         </div>
         {/* Sets done, not tonnage — tonnage mid-workout tells you nothing. */}
         <div>
-          <span>Sets</span>
-          <b>{w.totals?.workingSets ?? 0}</b>
+          <span>Sets done</span>
+          <b>{loggedSets}</b>
         </div>
         <div>
           <span>Exercises</span>
@@ -107,6 +110,11 @@ export default function Workout({ go }: { go: (page: string) => void }) {
           </b>
         </div>
       </div>
+
+      {w.entries.length > 0 && <div className="session-progress">
+        <div><span>Session progress</span><strong>{completedExercises} of {w.entries.length} exercises complete</strong></div>
+        <progress value={completedExercises} max={w.entries.length} aria-label={`${completedExercises} of ${w.entries.length} exercises complete`} />
+      </div>}
 
       {(w.pendingSync || finishError) && (
         <div className="offline-note" role="status">
@@ -503,33 +511,6 @@ function CardHeader({
       <div>
         <h3>
           {exercise.name}
-          <span
-            className="tag"
-            style={{
-              marginLeft: 8,
-              fontSize: 10.5,
-              textTransform: 'capitalize',
-              color: `var(--cat-${exercise.category}, var(--text-2))`,
-              background: `color-mix(in srgb, var(--cat-${exercise.category}, var(--accent)) 12%, var(--surface-2))`,
-              border: `1px solid color-mix(in srgb, var(--cat-${exercise.category}, var(--accent)) 25%, transparent)`,
-            }}
-          >
-            {exercise.category}
-          </span>
-          {exercise.met ? (
-            <span
-              className="tag"
-              style={{
-                marginLeft: 4,
-                fontSize: 10.5,
-                background: 'var(--surface-3)',
-                color: 'var(--text-3)',
-              }}
-              title="Activity intensity MET"
-            >
-              {exercise.met} MET
-            </span>
-          ) : null}
           <a
             className="how-to inline"
             href={exercise.howToUrl}
@@ -541,7 +522,7 @@ function CardHeader({
             <I.HelpCircle size={15} />
           </a>
         </h3>
-        <p className="muted">{previous ?? 'First time logging this one'}</p>
+        <p className="muted">{CATEGORIES.find((category) => category.id === exercise.category)?.name ?? exercise.category} · {previous ?? 'First session'}</p>
       </div>
       <div className="ex-live-menu">
         <button className="icon-btn sm" onClick={() => setMenu(!menu)} aria-label={`Options for ${exercise.name}`}>

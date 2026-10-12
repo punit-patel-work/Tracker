@@ -4,7 +4,7 @@
  * Deliberately conservative — /api is never cached. A stale set count or a
  * cached workout would be worse than an error message.
  */
-const CACHE = 'gym-tracker-v1';
+const CACHE = 'gym-tracker-v3';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
