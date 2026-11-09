@@ -10,8 +10,8 @@ import {
 } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useApp } from './app';
-import { sessionTotals } from '../../shared/engine.js';
-import type { Cardio, Entry, NewPR, PreviousPerformance, Session, Totals, WorkSet } from '../lib/types';
+import { sessionTotals, workoutPauseAt, RESUME_WINDOW_MS } from '../../shared/engine.js';
+import type { Cardio, Entry, NewPR, PreviousPerformance, Session, Totals, WorkSet, WorkoutFeedback } from '../lib/types';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'conflict' | 'error';
 interface LocalCopy { userId: string; session: Session; entries: Entry[]; dirty: boolean; updatedAt: number }
@@ -36,7 +36,8 @@ interface WorkoutState {
   loading: boolean;
 
   start: (opts: { routineId?: string; name?: string }) => Promise<void>;
-  finish: () => Promise<{ session: Session | null; newPRs: NewPR[]; discarded: boolean }>;
+  resume: () => Promise<void>;
+  finish: (feedback?: WorkoutFeedback) => Promise<{ session: Session | null; newPRs: NewPR[]; discarded: boolean }>;
   cancel: () => Promise<void>;
 
   addExercise: (exerciseId: string) => void;
@@ -187,8 +188,51 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [entries, previous]);
 
+  // Reconcile once the return window closes, including when a sleeping tab wakes.
+  useEffect(() => {
+    if (!session || loading) return;
+    let cancelled = false;
+    let checking = false;
+    const deadline = workoutPauseAt(session) + RESUME_WINDOW_MS;
+    let timer: number;
+    const check = async () => {
+      if (cancelled || checking || closing.current || Date.now() < deadline) return;
+      checking = true;
+      try {
+        const { session: saved } = await api.activeSession();
+        if (cancelled || sessionRef.current !== session) return;
+        if (dirty.current && (saved?.id !== session.id || saved.revision !== session.revision)) {
+          handleFailure(new ApiError('Your workout changed or ended before this device could sync. Export your changes or use the saved version.', 409));
+          return;
+        }
+        if (saved?.id === session.id && workoutPauseAt(saved) === workoutPauseAt(session)) {
+          // The server clock determines expiry.
+          timer = window.setTimeout(check, 15000);
+          return;
+        }
+        adopt(saved, dirty.current ? entriesRef.current : saved?.entries ?? []);
+        setRest(null); setUndoStack([]); setPrevious({}); persist();
+      } catch {
+        if (!cancelled) timer = window.setTimeout(check, 15000);
+      } finally {
+        checking = false;
+      }
+    };
+    timer = window.setTimeout(check, Math.max(0, deadline - Date.now()));
+    window.addEventListener('focus', check);
+    window.addEventListener('online', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', check);
+      window.removeEventListener('online', check);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [session, loading, adopt, handleFailure, persist]);
+
   const mutate = useCallback((fn: (list: Entry[]) => Entry[]) => {
-    if (closing.current) return;
+    if (closing.current || !sessionRef.current || Date.now() >= workoutPauseAt(sessionRef.current)) return;
     editVersion.current++; dirty.current = true;
     const rows = fn(entriesRef.current);
     entriesRef.current = rows; setEntries(rows);
@@ -210,7 +254,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const totals = useMemo(() => {
     if (!session) return null;
     return sessionTotals(
-      { entries, bodyWeightKg: session.bodyWeightKg, startedAt: session.startedAt, endedAt: null, date: session.date },
+      { ...session, entries },
       byId as never,
     ) as Totals;
   }, [entries, session, byId]);
@@ -256,7 +300,21 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         adopt(next); setUndoStack([]); setPrevious({}); setRest(null);
         setPendingSync(false); setSaveState('idle'); setSyncError(''); persist();
       },
-      finish: async () => {
+      resume: async () => {
+        const current = sessionRef.current;
+        if (!current || closing.current) return;
+        const epoch = generation.current;
+        await saveNow();
+        if (blocked.current) throw new Error(syncError || 'Resolve your unsaved changes first.');
+        await enqueue(async () => {
+          const latest = sessionRef.current;
+          if (!latest || latest.id !== current.id) return;
+          const { session: resumed } = await api.resumeSession(latest.id, latest.revision ?? 0);
+          if (generation.current !== epoch || sessionRef.current?.id !== current.id) return;
+          adopt(resumed); setRest(null); persist();
+        });
+      },
+      finish: async (feedback) => {
         if (closing.current) throw new Error('The workout is already being saved');
         closing.current = true;
         const epoch = generation.current;
@@ -266,7 +324,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
           return await enqueue(async () => {
             const current = sessionRef.current;
             if (!current) return { session: null, newPRs: [], discarded: true };
-            const result = await api.finishSession(current.id, current.revision ?? 0);
+            const result = feedback ? await api.finishSession(current.id, current.revision ?? 0, feedback) : await api.finishSession(current.id, current.revision ?? 0);
             if (epoch === generation.current) {
               dirty.current = false; adopt(null); setPrevious({}); setUndoStack([]); setRest(null);
               setPendingSync(false); setSyncError(''); persist();

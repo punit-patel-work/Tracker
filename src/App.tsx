@@ -6,6 +6,7 @@ import { useApp } from './state/app';
 
 import { useWorkout } from './state/workout';
 
+import { workoutElapsedMs } from '../shared/engine.js';
 import { useTheme } from './state/theme';
 
 import { clock, fromKg, num, weightLabel } from './lib/format';
@@ -52,7 +53,7 @@ const NAV: { id: Page; label: string; short: string; icon: ComponentType<{ size?
 
   { id: 'progress', label: 'Progress', short: 'Progress', icon: I.BarChart },
 
-  { id: 'ai', label: 'AI coach', short: 'AI coach', icon: I.Sliders },
+  { id: 'ai', label: 'AI Coach', short: 'AI Coach', icon: I.Sparkles },
   { id: 'profile', label: 'Profile', short: 'You', icon: I.User },
 
 ];
@@ -394,7 +395,7 @@ function Shell({ themeToggle }: { themeToggle: React.ReactNode }) {
 
             <span>
 
-              {clock(now - new Date(w.session.startedAt).getTime())} · {w.totals?.workingSets ?? 0} sets ·{' '}
+              {clock(workoutElapsedMs(w.session, now))} · {w.totals?.workingSets ?? 0} sets ·{' '}
 
               {num(fromKg(w.totals?.volumeKg ?? 0, units))} {weightLabel(units)}
 

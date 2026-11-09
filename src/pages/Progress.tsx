@@ -92,7 +92,7 @@ export default function Progress() {
   const selectedDayCount = data?.dailySessions?.[activeDay];
 
   return <div className="progress-page stack">
-    <div className="page-head"><div><span className="eyebrow">THE WORK ADDS UP</span><h2 className="page-title">Your progress</h2><p className="page-sub">Explore your training. See what’s changing.</p></div>
+    <div className="page-head"><div><h2 className="page-title"><I.TrendingUp size={24}/> Your progress</h2><p className="page-sub">Explore your training. See what’s changing.</p></div>
       <button className="btn btn-ghost" onClick={() => setRetry((n) => n + 1)} disabled={loading}><I.Refresh size={15} /> Refresh</button></div>
     <div className="progress-toolbar"><div className="progress-ranges" role="group" aria-label="Progress date range">{RANGES.map((range) =>
       <button key={range.weeks} aria-pressed={weeks === range.weeks} className={weeks === range.weeks ? 'on' : ''} onClick={() => setWeeks(range.weeks)}>{range.label}</button>)}</div>

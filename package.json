@@ -16,7 +16,7 @@
     "preview:ui": "node scripts/preview-ui.mjs",
     "test:progress": "node --test scripts/progress.test.mjs",
     "test:unit": "node --test scripts/progress.test.mjs scripts/session-edit.test.mjs scripts/offline-shell.test.mjs",
-    "test:integration": "node --test scripts/reliability.test.mjs scripts/admin.test.mjs scripts/ai.test.mjs",
+    "test:integration": "node --test scripts/reliability.test.mjs scripts/admin.test.mjs scripts/ai.test.mjs scripts/coaching.test.mjs",
     "admin:create": "node scripts/create-admin.mjs",
     "test:ui": "vitest run",
     "test": "npm run test:unit && npm run test:integration && npm run test:ui",

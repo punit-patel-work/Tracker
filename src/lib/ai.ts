@@ -10,7 +10,7 @@ export interface AiExercise extends RoutineExercise { reason:string; loadReason:
 export interface AiDay { name:string; focus:string; exercises:AiExercise[]; estimatedMinutes?:number }
 export interface RoutineResult { title:string; explanation:string; limitations:string[]; days:AiDay[] }
 export interface InsightResult { summary:string; observations:{title:string;detail:string;evidenceIds:string[]}[]; nextSteps:string[]; limitations:string[] }
-export interface AiDraft { id:string;savedDays?:number[];task:'routine'|'review'|'explanation';result:RoutineResult|InsightResult;createdAt:string;model:string;costUsd:number;
+export interface AiDraft { id:string;savedDays?:number[];task:'routine'|'review'|'explanation'|'question';question?:string;result:RoutineResult|InsightResult;createdAt:string;model:string;costUsd:number;
   weekly?:{from:string;to:string;current:{sessions:number;workingSets:number;minutes:number;estimatedKcal:number};previous:unknown};
   evidence?:{id:string;name:string;date:string}[] }
 export interface Bootstrap {preferences:TrainingPreferences|null;enabled:boolean;configured:boolean;equipment:string[];drafts:AiDraft[]}

@@ -131,6 +131,8 @@ const RoutineExerciseSchema = new Schema(
     exercise: { type: Schema.Types.ObjectId, ref: 'Exercise', required: true },
     targetSets: { type: Number, default: 3 },
     targetReps: { type: Number, default: 8 },
+    repCeiling: { type: Number, default: null },
+    incrementKg: { type: Number, default: null },
     targetWeightKg: { type: Number, default: null },
     targetDurationSec: { type: Number, default: null },
     targetCardioMin: { type: Number, default: null },
@@ -146,6 +148,7 @@ const RoutineSchema = new Schema(
     note: { type: String, default: '' },
     exercises: { type: [RoutineExerciseSchema], default: [] },
     aiSource: { type: String },
+    coachingUndo: { type: Object, default: null },
     lastPerformedAt: { type: Date, default: null },
     archived: { type: Boolean, default: false },
   },
@@ -202,6 +205,9 @@ const SessionSchema = new Schema(
     status: { type: String, enum: ['active', 'completed'], default: 'active', index: true },
     startedAt: { type: Date, required: true },
     endedAt: { type: Date, default: null },
+    lastResumedAt: { type: Date, default: null },
+    pausedMs: { type: Number, default: 0, min: 0 },
+    feedback: { type: new Schema({ difficulty: String, stoppedFor: String, note: String }, { _id: false }), default: null },
     /** Snapshot: past sessions never get rewritten when the user's weight changes. */
     bodyWeightKg: { type: Number, required: true },
     entries: { type: [EntrySchema], default: [] },
@@ -224,6 +230,13 @@ SessionSchema.index({ user: 1, 'entries.exercise': 1, date: -1 });
 export const User = model('User', UserSchema);
 export const Exercise = model('Exercise', ExerciseSchema);
 export const Routine = model('Routine', RoutineSchema);
+const WeekPlanSchema = new Schema({
+  user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  week: { type: String, required: true },
+  slots: { type: [new Schema({ date: String, routineId: Schema.Types.ObjectId }, { _id: false })], default: [] },
+}, { timestamps: true, optimisticConcurrency: true });
+WeekPlanSchema.index({ user: 1, week: 1 }, { unique: true });
+export const WeekPlan = model('WeekPlan', WeekPlanSchema);
 export const Session = model('Session', SessionSchema);
 
 const AuditSchema = new Schema({

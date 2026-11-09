@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/app';
 import { api } from '../lib/api';
-import { bmr } from '../../shared/engine.js';
+import { ageFromBirthYear, bmr } from '../../shared/engine.js';
 import { formatDate, fromKg, num, relativeDay, toKg, todayISO, weightLabel } from '../lib/format';
 import { Toast, useToast } from '../components/common';
 import * as I from '../components/Icon';
@@ -18,6 +18,8 @@ export default function ProfilePage() {
   const { user, setUser, signOut } = useApp();
   const toast = useToast();
   const [weighIn, setWeighIn] = useState('');
+  const [weightError, setWeightError] = useState('');
+  const [metricError, setMetricError] = useState('');
   const [danger, setDanger] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,29 +27,42 @@ export default function ProfilePage() {
   if (!user) return null;
   const units = user.units;
   const unit = weightLabel(units);
-  const age = user.birthYear ? new Date().getFullYear() - user.birthYear : 0;
+  const age = ageFromBirthYear(user.birthYear ?? 0);
   const metrics = { sex: user.sex, weightKg: user.currentWeightKg, heightCm: user.heightCm ?? 0, age };
   const rest = bmr(metrics);
 
   const patch = async (body: Parameters<typeof api.updateMe>[0], message?: string) => {
-    const { user: saved } = await api.updateMe(body);
-    setUser(saved);
-    if (message) toast.show(message);
+    setMetricError('');
+    try {
+      const { user: saved } = await api.updateMe(body);
+      setUser(saved);
+      if (message) toast.show(message);
+    } catch (err) {
+      setMetricError(err instanceof Error ? err.message : 'Could not save your profile change.');
+    }
   };
 
   const logWeight = async () => {
     const kg = toKg(Number(weighIn), units);
-    if (!kg || kg <= 0) return;
-    const { user: saved } = await api.addWeight(Math.round(kg * 10) / 10);
-    setUser(saved);
-    setWeighIn('');
-    toast.show('Weight logged');
+    setWeightError('');
+    if (kg == null || !Number.isFinite(kg) || kg < 1 || kg > 700) {
+      setWeightError(`Enter a weight between ${num(fromKg(1, units), 1)} and ${num(fromKg(700, units), 1)} ${unit}.`);
+      return;
+    }
+    try {
+      const { user: saved } = await api.addWeight(Math.round(kg * 10) / 10);
+      setUser(saved);
+      setWeighIn('');
+      toast.show('Weight logged');
+    } catch (err) {
+      setWeightError(err instanceof Error ? err.message : 'Could not save your weigh-in.');
+    }
   };
 
   const alreadyToday = user.weighIns.some((w) => w.date === todayISO());
 
   return (
-    <div className="stack">
+    <div className="stack profile-page">
       <div className="page-head">
         <div>
           <h2 className="page-title">
@@ -101,6 +116,8 @@ export default function ProfilePage() {
           </button>
         </div>
 
+        {weightError && <p role="alert" className="form-error">{weightError}</p>}
+
         {user.weighIns.length > 0 && (
           <div className="weigh-list">
             {[...user.weighIns]
@@ -135,15 +152,19 @@ export default function ProfilePage() {
           <I.Flame size={28} />
         </div>
         <div>
-          <div className="hero-eyebrow">Resting energy · Mifflin–St Jeor</div>
-          <div className="hero-value">
-            {num(rest)}
-            <span>kcal / day</span>
-          </div>
-          <div className="hero-note">
-            What your body spends doing nothing, from {num(fromKg(user.currentWeightKg, units), 1)} {unit},{' '}
-            {user.heightCm ?? 0} cm, {age} years. Workout burn is reported on top of this figure.
-          </div>
+          <div className="hero-eyebrow">Estimated resting burn</div>
+          {rest > 0 ? <>
+            <div className="hero-value">{num(rest)}<span>kcal / day</span></div>
+            <div className="hero-note">Estimated energy your body uses over 24 hours at rest.</div>
+            <details className="hero-note">
+              <summary>How is this calculated?</summary>
+              <p>The Mifflin–St Jeor equation uses your latest weight in kilograms,
+                height in centimetres and approximate age from your birth year ({user.birthYear}).
+                {units === 'imperial' && ` Your displayed weight of ${num(fromKg(user.currentWeightKg, units), 1)} lb corresponds to ${user.currentWeightKg} kg.`}</p>
+              <p>10 × {user.currentWeightKg} kg + 6.25 × {user.heightCm} cm − 5 × {age} years
+                {' '}{user.sex === 'female' ? '− 161 (female)' : '+ 5 (male)'} ≈ {num(rest)} kcal/day.</p>
+            </details>
+          </> : <p className="hero-note">Check your weight, height, birth year and sex to see a resting estimate.</p>}
         </div>
       </div>
 
@@ -157,6 +178,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {metricError && <p role="alert" className="form-error">{metricError}</p>}
         <div className="form-grid">
           <div className="field">
             <label htmlFor="pf-name">Name</label>

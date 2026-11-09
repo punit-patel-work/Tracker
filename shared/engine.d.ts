@@ -42,11 +42,21 @@ export interface EngineEntry {
   notes?: string;
 }
 
-export interface EngineSession {
-  entries: EngineEntry[];
-  bodyWeightKg: number;
+interface WorkoutClock {
   startedAt: string | number | Date;
   endedAt?: string | number | Date | null;
+  lastResumedAt?: string | number | Date | null;
+  pausedMs?: number;
+}
+
+export declare const WORKOUT_LIMIT_MS: number;
+export declare const RESUME_WINDOW_MS: number;
+export declare function workoutPauseAt(session: WorkoutClock): number;
+export declare function workoutElapsedMs(session: WorkoutClock, now?: number): number;
+
+export interface EngineSession extends WorkoutClock {
+  entries: EngineEntry[];
+  bodyWeightKg: number;
   date: string;
 }
 

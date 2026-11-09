@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import ProfilePage from '../src/pages/ProfilePage';
 import { AppProvider, useApp } from '../src/state/app';
 import { api, ApiError } from '../src/lib/api';
 import { cacheAccount, offlineAccount } from '../src/lib/offline';
@@ -95,4 +96,29 @@ it('traps modal keyboard focus and restores the invoking control', () => {
   view.unmount();
   expect(document.activeElement).toBe(launcher);
   launcher.remove();
+});
+
+it('uses the stored kilograms for resting burn with either display unit and shows the sex-specific calculation', async () => {
+  const profile = { ...alice, units: 'imperial', sex: 'female', currentWeightKg: 80, heightCm: 180,
+    weighIns: [], birthYear: new Date().getFullYear() - 30 };
+  vi.mocked(api.me).mockResolvedValue({ user: profile });
+  vi.spyOn(api, 'updateMe').mockImplementation(async changes => ({ user: { ...profile, ...changes } }) as any);
+  render(<AppProvider><ProfilePage /></AppProvider>);
+  const value = await screen.findByText('1,614');
+  fireEvent.click(screen.getByText('How is this calculated?'));
+  expect(screen.getByText(/176.4 lb corresponds to 80 kg/)).toBeTruthy();
+  expect(screen.getByText(/− 161 \(female\)/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Kilograms' }));
+  await waitFor(() => expect(screen.queryByText(/corresponds to/)).toBeNull());
+  expect(value.textContent).toContain('1,614');
+  fireEvent.change(screen.getByLabelText('Biological sex'), { target: { value: 'male' } });
+  await screen.findByText('1,780');
+});
+
+it('asks for missing measurements instead of displaying zero or assuming a sex', async () => {
+  vi.mocked(api.me).mockResolvedValue({ user: { ...alice, currentWeightKg: 80, heightCm: 180,
+    birthYear: 1990, weighIns: [] } });
+  render(<AppProvider><ProfilePage /></AppProvider>);
+  await screen.findByText(/Check your weight, height, birth year and sex/);
+  expect(screen.queryByText('kcal / day')).toBeNull();
 });

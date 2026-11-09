@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/app';
 import { useWorkout } from '../state/workout';
+import { aiApi } from '../lib/ai';
 import { api } from '../lib/api';
 import { clock, formatDate, fromKg, num, relativeDay, shiftDays, todayISO, weightLabel } from '../lib/format';
+import { workoutElapsedMs } from '../../shared/engine.js';
 import { useTick } from '../components/common';
 import * as I from '../components/Icon';
 import TrainingArtwork, { trainingFocus, focusLabels } from '../components/TrainingArtwork';
@@ -42,7 +44,18 @@ export default function Home({ go }: { go: (page: string) => void }) {
   const weighInStale = !lastWeighIn || lastWeighIn.date < shiftDays(todayISO(), -7);
   const monday = shiftDays(todayISO(), -((new Date().getDay() + 6) % 7));
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const featured = routines[0];
+  const [plannedId, setPlannedId] = useState('');
+  const today = todayISO();
+  useEffect(() => {
+    const controller = new AbortController();
+    setPlannedId('');
+    aiApi<{ slots: { date: string; routineId: string }[] }>('/coaching/weeks/' + monday, 'GET', undefined, controller.signal)
+      .then(plan => { if (!controller.signal.aborted) setPlannedId(plan.slots.find(s => s.date === today)?.routineId ?? ''); })
+      .catch(() => { /* The dashboard can still start any saved routine while the planner is unavailable. */ });
+    return () => controller.abort();
+  }, [monday, today, user?.id]);
+  const planned = routines.find(r => r.id === plannedId);
+  const featured = planned ?? routines[0];
   const goalProgress = Math.min(1, done / Math.max(target, 1));
   const loggedSets = entries.reduce((count, entry) => count + entry.sets.filter((set) => set.done && !set.isWarmup).length, 0);
 
@@ -73,10 +86,10 @@ export default function Home({ go }: { go: (page: string) => void }) {
       <section className="training-feature">
         <img className="training-feature-photo" src="/images/training-barbell.jpg" alt="" fetchPriority="high" />
         <div className="training-feature-content">
-          <span className="training-label"><span />{session ? 'Session in progress' : featured ? 'From your routines' : 'Your next chapter'}</span>
+          <span className="training-label"><span />{session ? 'Session in progress' : planned ? 'Scheduled for today' : featured ? 'From your routines' : 'Your next chapter'}</span>
           <h2>{session ? session.name : featured ? featured.name : 'Make your\nnext move.'}</h2>
           <p>{session
-            ? `${clock(now - new Date(session.startedAt).getTime())} elapsed · ${loggedSets} working sets completed`
+            ? `${clock(workoutElapsedMs(session, now))} elapsed · ${loggedSets} working sets completed`
             : featured ? featured.note || 'Your plan. Your pace. Every rep counts.' : 'Start a session and build it your way.'}</p>
           {featured && !session && <div className="training-feature-meta"><span><I.Dumbbell size={15} /> {featured.exercises.length} exercises</span><span><I.Layers size={15} /> {focusLabels[trainingFocus(featured, byId)]}</span></div>}
           <div className="training-feature-actions">

@@ -30,6 +30,7 @@ router.patch('/:id', async (req, res) => {
   id(req.params.id);
   const doc = await Routine.findOne({ _id: req.params.id, user: req.user._id });
   if (!doc) return res.status(404).json({ error: 'Routine not found' });
+  if (req.body.revision !== undefined && req.body.revision !== doc.__v) return res.status(409).json({ error: 'This routine changed. Reopen the editor to see the current targets.' });
   if (req.body.name !== undefined) doc.name = text(req.body.name, 'Routine name');
   if (req.body.note !== undefined) doc.note = text(req.body.note, 'Routine notes', 2000, false);
   if (req.body.exercises !== undefined) doc.exercises = routineInput(req.body.exercises);
@@ -51,6 +52,7 @@ router.delete('/:id', async (req, res) => {
 function serialize(r) {
   return {
     id: String(r._id),
+    revision: r.__v ?? 0,
     name: r.name,
     note: r.note,
     lastPerformedAt: r.lastPerformedAt,
@@ -58,6 +60,8 @@ function serialize(r) {
       exerciseId: String(e.exercise),
       targetSets: e.targetSets,
       targetReps: e.targetReps,
+      repCeiling: e.repCeiling ?? null,
+      incrementKg: e.incrementKg ?? null,
       targetWeightKg: e.targetWeightKg,
       restSec: e.restSec,
       targetDurationSec: e.targetDurationSec,

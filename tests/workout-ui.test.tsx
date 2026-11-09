@@ -127,3 +127,18 @@ describe('workout interface', () => {
     await screen.findByText('Nothing logged yet');
   });
 });
+
+it('freezes the timer during the return window and resumes only when requested', async () => {
+  const session = { ...fresh(), startedAt: new Date(Date.now() - 150 * 60_000).toISOString() };
+  vi.mocked(api.activeSession).mockResolvedValue({ session: session as any });
+  const resume = vi.spyOn(api, 'resumeSession').mockResolvedValue({ session: {
+    ...session, lastResumedAt: new Date().toISOString(), pausedMs: 30 * 60_000, revision: 1,
+  } as any });
+  render(<WorkoutProvider><Workout go={vi.fn()} /></WorkoutProvider>);
+  const button = await screen.findByRole('button', { name: 'Resume workout' });
+  expect(screen.queryByRole('button', { name: /Add exercise/ })).toBeNull();
+  expect(resume).not.toHaveBeenCalled();
+  fireEvent.click(button);
+  await screen.findByRole('button', { name: /Add exercise/ });
+  expect(resume).toHaveBeenCalledWith(session.id, 0);
+});

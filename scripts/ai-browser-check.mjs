@@ -17,6 +17,7 @@ try {
   const path=new URL(route.request().url()).pathname;
   let data={};
   if(path.endsWith('/bootstrap'))data={preferences:null,enabled:true,configured:true,equipment:[],drafts:[draft]};
+  else if(path.includes('/coaching/weeks/'))data={revision:-1,slots:[],completed:[],preferredDays:[]};
   else if(path.endsWith('/routine-draft'))data={draft,cached:false};
   else if(path.includes('/drafts/')&&path.endsWith('/save'))data={routineId:'preview-saved'};
   else if(path.endsWith('/admin'))data={config:{enabled:true,monthlyBudgetUsd:5},ledger:{usedUsd:.096,reservedUsd:0,requests:3},items:[],groups:[{_id:'routine',requests:1,costUsd:.096,inputTokens:27000,outputTokens:2600}],configured:true,models:{routine:'gpt-6.1-sol',insights:'gpt-6-luna'}};
@@ -26,7 +27,7 @@ try {
  });
  await page.route('**/api/auth/me',async route=>{const response=await route.fetch();const data=await response.json();data.user.role='admin';data.user.isOwner=true;await route.fulfill({json:data});});
  await page.goto('http://127.0.0.1:5174');
- await page.getByRole('button',{name:'AI coach',exact:true}).filter({visible:true}).click();
+ await page.getByRole('button',{name:'AI Coach',exact:true}).filter({visible:true}).click();
  await page.getByText('Goals & schedule',{exact:true}).waitFor();
  await fs.mkdir('docs',{recursive:true});
  await page.evaluate(()=>window.scrollTo(0,0));

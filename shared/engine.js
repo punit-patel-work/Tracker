@@ -21,9 +21,10 @@ export function metKcal(met, weightKg, minutes) {
 
 /** Mifflin-St Jeor. */
 export function bmr({ sex, weightKg, heightCm, age }) {
-  if (!weightKg || !heightCm || !age) return 0;
+  if (sex !== 'male' && sex !== 'female') return 0;
+  if (![weightKg, heightCm, age].every(value => Number.isFinite(value) && value > 0)) return 0;
   const base = 10 * weightKg + 6.25 * heightCm - 5 * age;
-  return Math.round(sex === 'female' ? base - 161 : base + 5);
+  return Math.max(0, Math.round(sex === 'female' ? base - 161 : base + 5));
 }
 
 export function ageFromBirthYear(birthYear) {
@@ -134,6 +135,19 @@ export function cardioKcal(exercise, cardio, bodyWeightKg) {
   return metKcal(met, bodyWeightKg, minutes);
 }
 
+export const WORKOUT_LIMIT_MS = 120 * 60_000;
+export const RESUME_WINDOW_MS = 60 * 60_000;
+
+export function workoutPauseAt(session) {
+  return new Date(session.lastResumedAt ?? session.startedAt).getTime() + WORKOUT_LIMIT_MS;
+}
+
+export function workoutElapsedMs(session, now = Date.now()) {
+  if (!session.startedAt) return 0;
+  const end = session.endedAt ? new Date(session.endedAt).getTime() : Math.min(now, workoutPauseAt(session));
+  return Math.max(0, end - new Date(session.startedAt).getTime() - (session.pausedMs ?? 0));
+}
+
 /**
  * @param session  {{ entries: [], bodyWeightKg, startedAt, endedAt }}
  * @param byId     Map of exerciseId -> exercise
@@ -169,8 +183,7 @@ export function sessionTotals(session, byId) {
     }
   }
 
-  const end = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
-  const durationMin = session.startedAt ? Math.max(0, (end - new Date(session.startedAt).getTime()) / 60000) : 0;
+  const durationMin = workoutElapsedMs(session) / 60000;
 
   return {
     volumeKg,
@@ -234,7 +247,7 @@ const PROGRESSION_REPS = 8;
  * no clean signal — inconsistent loads mean you were working something out.
  */
 export function suggestNextWeight(previous, exercise) {
-  if (!previous || !exercise || exercise.type === 'cardio' || exercise.isTimed) return null;
+  if (!previous || previous.holdProgression || !exercise || exercise.type === 'cardio' || exercise.isTimed) return null;
 
   const working = (previous.sets ?? []).filter((s) => !s.isWarmup && (s.reps ?? 0) > 0);
   if (working.length < 2) return null;

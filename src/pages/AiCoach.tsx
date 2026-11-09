@@ -1,3 +1,6 @@
+import * as I from '../components/Icon';
+import WeeklyPlanner from '../components/WeeklyPlanner';
+import CoachQuestion from '../components/CoachQuestion';
 import { useEffect,useRef,useState } from 'react';
 import { useApp } from '../state/app';
 import { api } from '../lib/api';
@@ -7,16 +10,29 @@ import type { Session } from '../lib/types';
 import ExerciseAlternatives from '../components/ExerciseAlternatives';
 import ExercisePicker from '../components/ExercisePicker';
 import '../styles/ai.css';
+const tools = [
+  { id: 'routine', label: 'Build a routine', icon: I.Layers },
+  { id: 'planner', label: 'Weekly planner', icon: I.Calendar },
+  { id: 'review', label: 'Review my week', icon: I.TrendingUp },
+  { id: 'explanation', label: 'Explain a workout', icon: I.Activity },
+  { id: 'question', label: 'Ask a question', icon: I.HelpCircle },
+  { id: 'saved', label: 'Saved suggestions', icon: I.Save },
+] as const;
+type CoachTool = typeof tools[number]['id'];
+const stepNames = ['Goals & schedule', 'Training background', 'Equipment & preferences'];
 const weekdays=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const goals=[['general','General fitness'],['hypertrophy','Build muscle'],['strength','Build strength'],['fat-loss','Support fat loss']];
 export default function AiCoach() {
   const {user,exercises,reloadRoutines,offline}=useApp();
   const [boot,setBoot]=useState<Bootstrap|null>(null),[prefs,setPrefs]=useState<TrainingPreferences|null>(null);
-  const [tab,setTab]=useState<'routine'|'review'|'explanation'|'saved'>('routine'),[step,setStep]=useState(0);
+  const [tab,setTab]=useState<CoachTool>('routine'),[step,setStep]=useState(0);
   const [draft,setDraft]=useState<AiDraft|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [busy,setBusy]=useState(false),[consent,setConsent]=useState(false),[loading,setLoading]=useState(true);
   const [sessions,setSessions]=useState<Session[]>([]),[sessionId,setSessionId]=useState(''),[topic,setTopic]=useState('Explain exercise selection and rep targets');
   const [retry,setRetry]=useState(0),[excluding,setExcluding]=useState(false);
+  const [toolBusy, setToolBusy] = useState(false);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { stepHeading.current?.focus(); }, [step]);
   const alive=useRef(true);
   useEffect(()=>{alive.current=true;return ()=>{alive.current=false;};},[]);
   useEffect(()=>{
@@ -48,28 +64,44 @@ export default function AiCoach() {
     }catch(e){if(alive.current)setError((e as Error).message);}finally{if(alive.current)setBusy(false);}
   };
   const savePrefs=async()=>{if(!prefs)return;setBusy(true);setError('');try{await aiApi('/preferences','PUT',prefs);setNotice('Training preferences saved.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
-  const selectTab=(t:typeof tab)=>{setTab(t);setDraft(null);setError('');setNotice('');};
-  if(loading)return <div className="card card-pad" role="status">Loading your training assistant…</div>;
-  if(!boot||!prefs)return <div className="card card-pad"><p role="alert">{error||'Could not load your assistant.'}</p><button className="btn btn-primary" onClick={()=>setRetry(x=>x+1)}>Try again</button></div>;
+  const selectTab=(t:CoachTool)=>{if (t === tab) return; setTab(t);setDraft(null);setError('');setNotice('');};
+  if(loading)return <div className="card card-pad" role="status">Loading AI Coach…</div>;
+  if(!boot||!prefs)return <div className="card card-pad"><p role="alert">{error||'Could not load AI Coach.'}</p><button className="btn btn-primary" onClick={()=>setRetry(x=>x+1)}>Try again</button></div>;
   const disabled=busy||offline||!boot.enabled||!boot.configured;
   const units=user?.units??'metric';
   return <div className="stack ai-page">
-    <div className="ai-hero"><div><span className="eyebrow">YOUR TRAINING, WITH CONTEXT</span><h1>Training assistant</h1><p>Build a plan around your goals, schedule and the work you have already logged.</p></div><span className="ai-pill">You review every change</span></div>
-    <nav className="ai-tabs" aria-label="Assistant features">{([['routine','Build a routine'],['review','Review my week'],['explanation','Explain a workout'],['saved','Saved suggestions']] as const).map(([id,label])=><button disabled={busy} className={tab===id?'active':''} aria-current={tab===id?'page':undefined} key={id} onClick={()=>selectTab(id)}>{label}</button>)}</nav>
+    <header className="page-head coach-heading"><h1 className="page-title"><I.Sparkles size={24}/> AI Coach</h1></header>
+    <nav className="coach-tools" aria-label="Coach tools">
+      {tools.map(({ id, label, icon: Icon }) => <button type="button" key={id}
+        disabled={busy || toolBusy} aria-current={tab === id ? 'page' : undefined}
+        onClick={() => selectTab(id)}><Icon size={18}/><span>{label}</span></button>)}
+    </nav>
+    <div className="coach-tool-picker"><label htmlFor="coach-tool">Coach tool</label>
+      <select id="coach-tool" className="input" value={tab} disabled={busy || toolBusy} onChange={e => selectTab(e.target.value as CoachTool)}>
+        {tools.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+      </select>
+    </div>
     {(!boot.enabled||!boot.configured||offline)&&<p className="offline-note">{offline?'Connect to use AI assistance.':!boot.configured?'AI is not configured on the server.':'AI assistance is paused. Saved suggestions remain available.'}</p>}
     {error&&<p className="form-error" role="alert">{error}</p>}{notice&&<p className="ai-notice" role="status">{notice}</p>}
-    {tab==='saved'?<section className="card card-pad"><h2>Saved suggestions</h2><p className="muted">Reopen a suggestion without generating it again. Historical suggestions may need updating as your training changes.</p>
-      {!boot.drafts.length?<p>No suggestions yet. Start with your training preferences.</p>:<div className="stack">{boot.drafts.map(d=><button className="ai-saved" key={d.id} onClick={()=>setDraft(d)}><strong>{d.task==='routine'?(d.result as RoutineResult).title:d.task==='review'?'Weekly review':'Workout explanation'}</strong><span>{new Date(d.createdAt).toLocaleString()}</span></button>)}</div>}</section>
-    :!draft&&<section className="card card-pad">
+    {tab === 'planner' ? <WeeklyPlanner/> : tab === 'question' ? <CoachQuestion enabled={!disabled} onBusyChange={setToolBusy} onAnswer={answer => {
+      setBoot(b => b && ({ ...b, drafts: [answer, ...b.drafts.filter(d => d.id !== answer.id)].slice(0,8) }));
+      setTab('saved'); setDraft(answer); setError(''); setNotice('');
+    }}/> : tab==='saved' ? !draft && <section className="card card-pad"><h2>Saved suggestions</h2><p className="muted">Reopen a suggestion without generating it again. Historical suggestions may need updating as your training changes.</p>
+      {!boot.drafts.length?<p>No suggestions yet. Start with your training preferences.</p>:<div className="stack">{boot.drafts.map(d=><button className="ai-saved" key={d.id} onClick={()=>setDraft(d)}><strong>{d.task==='routine'?(d.result as RoutineResult).title:d.task==='review'?'Weekly review':d.task==='question'?(d.question || 'Coaching question'):'Workout explanation'}</strong><span>{new Date(d.createdAt).toLocaleString()}</span></button>)}</div>}</section>
+    :!draft&&<section className={tab === 'routine' ? 'card coach-builder' : 'card card-pad stack'}>
       {tab==='routine'?<>
-        <div className="ai-step"><span>Step {step+1} of 3</span><strong>{['Goals & schedule','Training background','Equipment & preferences'][step]}</strong></div>
+        <header className="coach-step" aria-live="polite">
+          <div><span>Step {step + 1} of {stepNames.length}</span><h2 ref={stepHeading} tabIndex={-1}>{stepNames[step]}</h2></div>
+          <div className="coach-step-meter" aria-hidden="true">{stepNames.map((name, index) =>
+            <i key={name} className={index <= step ? 'reached' : ''}/>)}</div>
+        </header>
         <form onSubmit={e=>{e.preventDefault();if(step<2)setStep(step+1);else void run();}}>
         <fieldset disabled={busy} className="ai-fieldset">
-        {step===0&&<div className="form-grid">
-          <label className="field">Main goal<select className="input" value={prefs.goal} onChange={e=>patch({goal:e.target.value})}>{goals.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
-          <label className="field">Training days per week<input className="input" required type="number" min={1} max={6} value={prefs.days} onChange={e=>patch({days:Number(e.target.value),preferredDays:[]})}/></label>
+        {step===0&&<div className="form-grid coach-schedule">
+          <label className="field ai-span">Main goal<select className="input" value={prefs.goal} onChange={e=>patch({goal:e.target.value})}>{goals.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+          <label className="field">Days per week<input className="input" required type="number" min={1} max={6} value={prefs.days} onChange={e=>patch({days:Number(e.target.value),preferredDays:[]})}/></label>
           <label className="field">Minutes per session<input className="input" required type="number" min={15} max={120} step={5} value={prefs.minutes} onChange={e=>patch({minutes:Number(e.target.value)})}/></label>
-          <div className="field"><span>Preferred weekdays (optional)</span><div className="ai-chips">{weekdays.map(day=><label key={day}><input type="checkbox" checked={prefs.preferredDays.includes(day)} onChange={()=>toggle('preferredDays',day)}/>{day}</label>)}</div><small>Leave open, or choose {prefs.days} days.</small></div>
+          <div className="field ai-span"><span>Preferred weekdays (optional)</span><div className="ai-chips coach-weekdays">{weekdays.map(day=><label key={day}><input type="checkbox" checked={prefs.preferredDays.includes(day)} onChange={()=>toggle('preferredDays',day)}/>{day}</label>)}</div><small>Leave open, or choose {prefs.days} days.</small></div>
           <div className="field ai-span"><span>Areas to prioritize (optional)</span><div className="ai-chips">{['Chest','Back','Legs','Shoulders','Arms','Core','Cardio'].map(v=><label key={v}><input type="checkbox" checked={prefs.priorities.includes(v)} onChange={()=>toggle('priorities',v)}/>{v}</label>)}</div></div>
         </div>}
         {step===1&&<div className="form-grid">
@@ -90,7 +122,7 @@ export default function AiCoach() {
           <p className="hint">This assistant plans general adult fitness training. Injury assessment and rehabilitation need appropriate professional guidance.</p>
           <Consent checked={consent} onChange={setConsent}/>
         </div>}
-        <div className="ai-actions"><button type="button" className="btn btn-ghost" disabled={step===0} onClick={()=>setStep(s=>s-1)}>Back</button>
+        <div className="ai-actions">{step>0 && <button type="button" className="btn btn-ghost" onClick={()=>setStep(s=>s-1)}>Back</button>}
           {step===2&&<button type="button" className="btn btn-ghost" onClick={()=>void savePrefs()}>Save preferences</button>}
           <button type="submit" className="btn btn-primary" disabled={step===2&&(disabled||!consent)}>{step<2?'Continue':'Generate my routine'}</button></div>
         </fieldset></form>
@@ -98,10 +130,10 @@ export default function AiCoach() {
       :<><h2>Understand a completed workout</h2><div className="form-grid"><label className="field">Workout<select className="input" value={sessionId} onChange={e=>setSessionId(e.target.value)}><option value="">Choose a workout</option>{sessions.map(s=><option key={s.id} value={s.id}>{s.date} · {s.name}</option>)}</select></label><label className="field">What would you like explained?<select className="input" value={topic} onChange={e=>setTopic(e.target.value)}>{['Explain exercise selection and rep targets','Explain the calorie estimate and its limitations','Explain the logged weights, reps and rest periods'].map(t=><option key={t}>{t}</option>)}</select></label></div>{!sessions.length&&<p>Complete a workout first to get an explanation.</p>}<Consent checked={consent} onChange={setConsent}/><button className="btn btn-primary" disabled={disabled||!consent||!sessionId} onClick={()=>void run()}>Explain this workout</button></>}
     </section>}
     {busy&&<div className="ai-progress" role="status"><span className="ai-dot"/>Preparing your suggestion. Detailed plans can take a minute. Your existing workouts stay as they are.</div>}
-    {draft&&<><div className="ai-result-head"><span>Generated {new Date(draft.createdAt).toLocaleString()} · Review before applying</span>{tab!=='saved'&&<button className="btn btn-ghost btn-sm" onClick={()=>setDraft(null)}>Adjust request</button>}</div>
+    {draft&&<><div className="ai-result-head"><span>Generated {new Date(draft.createdAt).toLocaleString()} · Review before applying</span><button className="btn btn-ghost btn-sm" onClick={()=>setDraft(null)}>{tab==='saved'?'Back to saved suggestions':'Adjust request'}</button></div>
       {draft.task==='routine'?<RoutinePreview key={draft.id} draft={draft} onSaved={async()=>{await reloadRoutines();const next=await aiApi<Bootstrap>('/bootstrap');setBoot(next);}}/>:<Insight draft={draft}/>}</>}
     {excluding&&<ExercisePicker multi exclude={prefs.excludedExerciseIds} onPick={e=>setPrefs(p=>p&&p.excludedExerciseIds.length<100?{...p,excludedExerciseIds:[...new Set([...p.excludedExerciseIds,e.id])]}:p)} onClose={()=>setExcluding(false)}/>}
-    <p className="hint">Your profile and relevant training records are sent to OpenAI only when you request a suggestion. API keys stay on the server. Exercise alternatives use the maintained catalog.</p>
+
   </div>;
 }
 function Consent({checked,onChange}:{checked:boolean;onChange:(v:boolean)=>void}) {
@@ -109,7 +141,7 @@ function Consent({checked,onChange}:{checked:boolean;onChange:(v:boolean)=>void}
 }
 export function Insight({draft}:{draft:AiDraft}) {
   const result=draft.result as InsightResult;
-  return <section className="card card-pad stack"><h2>{draft.task==='review'?'Your training review':'Your workout, explained'}</h2>
+  return <section className="card card-pad stack"><h2>{draft.task==='review'?'Your training review':draft.task==='question'?(draft.question || 'Your coaching answer'):'Your workout, explained'}</h2>
     {draft.weekly&&<><p>{draft.weekly.from} – {draft.weekly.to}</p><div className="ai-metrics"><div><strong>{draft.weekly.current.sessions}</strong><span>Logged workouts</span></div><div><strong>{draft.weekly.current.workingSets}</strong><span>Working sets</span></div><div><strong>{num(draft.weekly.current.minutes)}</strong><span>Minutes</span></div></div></>}
     <p>{result.summary}</p>{result.observations.map((o,i)=><div key={i}><h3>{o.title}</h3><p>{o.detail}</p>{o.evidenceIds.length>0&&<small className="muted">Based on {o.evidenceIds.map(id=>{const e=draft.evidence?.find(x=>x.id===id);return e?e.date+' '+e.name:'logged workout';}).join('; ')}</small>}</div>)}
     <h3>Next steps</h3><ul>{result.nextSteps.map((s,i)=><li key={i}>{s}</li>)}</ul>

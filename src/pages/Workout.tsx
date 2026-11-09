@@ -12,7 +12,7 @@ import {
   toKm,
   weightLabel,
 } from '../lib/format';
-import { effectiveLoadKg, estimated1RM, suggestNextWeight } from '../../shared/engine.js';
+import { effectiveLoadKg, estimated1RM, suggestNextWeight, workoutElapsedMs, workoutPauseAt, RESUME_WINDOW_MS } from '../../shared/engine.js';
 import ExercisePicker from '../components/ExercisePicker';
 import ExerciseAlternatives from '../components/ExerciseAlternatives';
 import PlateMath from '../components/PlateMath';
@@ -21,7 +21,7 @@ import ManualLog from './ManualLog';
 import { useModal } from '../components/useModal';
 import { useTick } from '../components/common';
 import * as I from '../components/Icon';
-import type { Entry, Exercise, Intensity, NewPR, PreviousPerformance, Session, Units, WorkSet } from '../lib/types';
+import type { Entry, Exercise, Intensity, NewPR, PreviousPerformance, Session, Units, WorkSet, WorkoutFeedback } from '../lib/types';
 
 const INTENSITIES: Intensity[] = ['light', 'moderate', 'vigorous', 'max'];
 
@@ -58,17 +58,28 @@ export default function Workout({ go }: { go: (page: string) => void }) {
     );
   }
 
-  const elapsed = now - new Date(w.session.startedAt).getTime();
+  const elapsed = workoutElapsedMs(w.session, now);
+  const pauseAt = workoutPauseAt(w.session);
+  const paused = now >= pauseAt;
+  const resumeUntil = pauseAt + RESUME_WINDOW_MS;
+  const expired = now >= resumeUntil;
+  const resume = async () => {
+    setFinishing(true);
+    setFinishError('');
+    try { await w.resume(); }
+    catch (err) { setFinishError(err instanceof Error ? err.message : 'Could not resume the workout.'); }
+    finally { setFinishing(false); }
+  };
   const loggedSets = w.entries.reduce((count, entry) => count + entry.sets.filter((set) => set.done && !set.isWarmup).length, 0);
   const completedExercises = w.entries.filter((entry) => byId.get(entry.exerciseId)?.type === 'cardio'
     ? entry.cardio?.done : entry.sets.length > 0 && entry.sets.every((set) => set.done)).length;
 
-  const finish = async () => {
+  const finish = async (feedback?: WorkoutFeedback) => {
     if (finishing) return;
     setFinishing(true);
     setFinishError('');
     try {
-      const result = await w.finish();
+      const result = await w.finish(feedback);
       setSummary({ session: result.session, newPRs: result.newPRs });
       setReviewFinish(false);
     } catch (error) {
@@ -94,12 +105,12 @@ export default function Workout({ go }: { go: (page: string) => void }) {
             {(w.saveState === 'conflict' || w.saveState === 'error') && 'Save needs attention'}
           </span>
         </div>
-        {w.undo && (
+        {w.undo && !paused && (
           <button className="icon-btn sm" onClick={w.undo} title="Undo last delete" aria-label="Undo last delete">
             <I.Undo size={17} />
           </button>
         )}
-        <button className="btn btn-primary" onClick={() => setReviewFinish(true)} disabled={finishing || w.loading}>
+        <button className="btn btn-primary" onClick={() => setReviewFinish(true)} disabled={finishing || w.loading || expired}>
           Finish
         </button>
       </div>
@@ -133,6 +144,14 @@ export default function Workout({ go }: { go: (page: string) => void }) {
         </>}
         <button className="btn btn-ghost btn-sm" onClick={w.exportBackup}>Export device copy</button>
       </div></div></div>}
+      {paused && <section className="card card-pad" aria-label="Paused workout">
+        <h3>{expired ? 'Resume window ended' : 'Workout paused'}</h3>
+        <p>{expired ? 'The workout clock stopped at the pause time.' :
+          `Resume before ${new Date(resumeUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} to continue. Time spent paused is excluded from your workout.`}</p>
+        {!expired && <button className="btn btn-primary" onClick={() => void resume()} disabled={finishing || w.loading}>Resume workout</button>}
+        {finishError && <p role="alert">{finishError}</p>}
+      </section>}
+      {!paused && <>
       <p className="hint">Check off sets and mark cardio complete as you go. Only completed work counts toward calories and is saved when you finish.</p>
       <CalorieBreakdown totals={w.totals ?? {}} bodyWeightKg={w.session.bodyWeightKg} units={units} live />
       {w.entries.length > 0 && <div className="session-progress">
@@ -191,9 +210,10 @@ export default function Workout({ go }: { go: (page: string) => void }) {
         />
       )}
 
-      {reviewFinish && <FinishReview entries={w.entries} busy={finishing} error={finishError}
+      </>}
+      {reviewFinish && !expired && <FinishReview entries={w.entries} busy={finishing} error={finishError}
         onClose={() => { if (!finishing) setReviewFinish(false); }} onFinish={finish} />}
-      {confirmCancel && (
+      {confirmCancel && !paused && (
         <div className="sheet-backdrop" onClick={() => setConfirmCancel(false)} role="presentation">
           <div className="dialog" onClick={(e) => e.stopPropagation()} role="dialog">
             <h3>Discard this workout?</h3>
@@ -381,7 +401,7 @@ function ExerciseCard({
         )} ${unit} e1RM`
     : null;
 
-  const suggestion = suggestNextWeight(previous, exercise);
+  const suggestion = w.session?.routineId ? null : suggestNextWeight(previous, exercise);
 
   return (
     <section className="ex-card-live">
@@ -1004,9 +1024,10 @@ function round(n: number, digits: number): number {
 }
 
 function FinishReview({ entries, busy, error, onClose, onFinish }: {
-  entries: Entry[]; busy: boolean; error: string; onClose: () => void; onFinish: () => void;
+  entries: Entry[]; busy: boolean; error: string; onClose: () => void; onFinish: (feedback?: WorkoutFeedback) => void;
 }) {
   const ref = useModal(onClose);
+  const [feedback, setFeedback] = useState<WorkoutFeedback>({ difficulty: '', stoppedFor: '', note: '' });
   const sets = entries.flatMap((entry) => entry.sets);
   const completed = sets.filter((set) => set.done).length;
   const unchecked = sets.length - completed;
@@ -1017,11 +1038,21 @@ function FinishReview({ entries, busy, error, onClose, onFinish }: {
       <h3 id="finish-title">Review your workout</h3>
       <p>{completed} completed sets · {cardio} completed cardio entries</p>
       {(unchecked > 0 || pendingCardio > 0) && <p className="hint">{unchecked} unchecked sets and {pendingCardio} unchecked cardio entries will be excluded. Go back to mark any work you completed.</p>}
+      {(completed > 0 || cardio > 0) && <details className="coach-feedback">
+        <summary>Workout feedback (optional)</summary>
+        <label className="field">How did it feel?<select className="input" value={feedback.difficulty} onChange={e => setFeedback({ ...feedback, difficulty: e.target.value as WorkoutFeedback['difficulty'] })}>
+          <option value="">Choose difficulty</option><option value="easy">Too easy</option><option value="manageable">About right</option><option value="hard">Too hard</option>
+        </select></label>
+        <label className="field">Stopped early?<select className="input" value={feedback.stoppedFor} onChange={e => setFeedback({ ...feedback, stoppedFor: e.target.value as WorkoutFeedback['stoppedFor'] })}>
+          <option value="">No reason recorded</option><option value="time">Ran out of time</option><option value="fatigue">Fatigue</option><option value="pain">Pain or discomfort</option><option value="other">Other</option>
+        </select></label>
+        <label className="field">Training note<textarea className="input" maxLength={500} value={feedback.note} onChange={e => setFeedback({ ...feedback, note: e.target.value })}/></label>
+      </details>}
       {!completed && !cardio && <p>No completed work will be saved. Finishing will discard this empty workout.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="dialog-actions">
         <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Keep training</button>
-        <button className="btn btn-primary" onClick={onFinish} disabled={busy}>{busy ? 'Saving...' : completed || cardio ? 'Save completed work' : 'Discard empty workout'}</button>
+        <button className="btn btn-primary" onClick={() => onFinish(Object.values(feedback).some(Boolean) ? feedback : undefined)} disabled={busy}>{busy ? 'Saving...' : completed || cardio ? 'Save completed work' : 'Discard empty workout'}</button>
       </div>
     </div>
   </div>;

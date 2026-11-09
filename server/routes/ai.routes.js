@@ -1,3 +1,4 @@
+import { coachingRoutes } from './coaching.routes.js';
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../auth.js';
 import { Exercise, Session, Routine, AdminAudit } from '../models.js';
@@ -11,8 +12,9 @@ import { generate, settings, budget, serialize, openaiRequest } from '../ai/serv
 export function createAiRouter({request=openaiRequest}={}) {
 const router=Router();
 router.use(requireAuth,(_req,res,next)=>{res.set('Cache-Control','no-store');next();});
+router.use('/coaching', coachingRoutes(request));
 router.get('/bootstrap',async(req,res)=>{
-  const [prefs,config,drafts]=await Promise.all([AiPreferences.findOne({user:req.user._id}).lean(),settings(),AiDraft.find({user:req.user._id}).sort({createdAt:-1}).limit(8).lean()]);
+  const [prefs,config,drafts]=await Promise.all([AiPreferences.findOne({user:req.user._id}).lean(),settings(),AiDraft.find({user:req.user._id,task:{$ne:'adjustment'}}).sort({createdAt:-1}).limit(8).lean()]);
   res.json({preferences:prefs?.preferences??null,enabled:config.enabled,configured:!!process.env.OPENAI_API_KEY,equipment:EQUIPMENT,drafts:drafts.map(serialize)});
 });
 router.put('/preferences',async(req,res)=>{

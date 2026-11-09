@@ -15,6 +15,10 @@ export const routineSchema = obj({
   title: str(100), explanation: str(1800), limitations: list(str(400),8),
   days: { ...list(obj({ name: str(100), focus: str(300), exercises: { ...list(exerciseSchema,10), minItems:1 } }),6), minItems:1 },
 });
+export const adjustmentSchema = obj({
+  summary: str(1200),
+  changes: list(obj({ exerciseId: str(24), reason: str(500), evidenceIds: list(str(24), 2) }), 100),
+});
 export const insightSchema = obj({
   summary: str(2000), observations: list(obj({ title: str(100), detail: str(700), evidenceIds: list(str(24),12) }),6),
   nextSteps: list(str(500),5), limitations: list(str(500),6),

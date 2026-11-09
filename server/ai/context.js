@@ -17,6 +17,7 @@ export async function buildContext(user, zone, preferences, task, sessionId) {
   const history = sessions.map(s=>({
     id:String(s._id),date:s.date,name:s.name,revision:s.__v??0,bodyWeightKg:s.bodyWeightKg,
     totals:sessionTotals({ ...s, entries:s.entries.map(e=>({...e,exerciseId:String(e.exercise)})) },byId),
+    feedback: s.feedback ?? null,
     entries:s.entries.map(e=>({
       exerciseId:String(e.exercise),name:byId.get(String(e.exercise))?.name??'Archived exercise',
       equipment:byId.get(String(e.exercise))?.equipment??'Unknown',

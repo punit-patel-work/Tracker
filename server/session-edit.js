@@ -41,5 +41,5 @@ export function completedWorkoutChanges(body, session, today) {
   // body's recorded weight even if the user has since added new weigh-ins.
   const startedAt = date === session.date && session.startedAt ? new Date(session.startedAt) : new Date(`${date}T12:00:00Z`);
   return { date, name: name.trim(), entries: mapped, startedAt,
-    endedAt: new Date(startedAt.getTime() + durationMin * 60000) };
+    endedAt: new Date(startedAt.getTime() + durationMin * 60000 + (session.pausedMs ?? 0)) };
 }

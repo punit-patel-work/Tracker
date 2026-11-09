@@ -7,7 +7,7 @@ import type {
   PreviousPerformance,
   Routine,
   Session,
-  User,
+  User, WorkoutFeedback,
 } from './types';
 
 export class ApiError extends Error {
@@ -85,8 +85,10 @@ export const api = {
   startSession: (body: { routineId?: string; name?: string }) => call<{ session: Session }>('POST', '/sessions', body),
   saveSession: (id: string, body: { revision: number; entries?: Entry[]; name?: string; notes?: string }) =>
     call<{ session: Session }>('PATCH', `/sessions/${id}`, body),
-  finishSession: (id: string, revision: number) =>
-    call<{ session: Session | null; newPRs: NewPR[]; discarded: boolean }>('POST', `/sessions/${id}/finish`, { revision }),
+  resumeSession: (id: string, revision: number) =>
+    call<{ session: Session }>('POST', `/sessions/${id}/resume`, { revision }),
+  finishSession: (id: string, revision: number, feedback?: WorkoutFeedback) =>
+    call<{ session: Session | null; newPRs: NewPR[]; discarded: boolean }>('POST', `/sessions/${id}/finish`, { revision, feedback }),
   sessions: (limit = 30, skip = 0, query = '') =>
     call<{ sessions: Session[]; total: number }>('GET', `/sessions?limit=${limit}&skip=${skip}&q=${encodeURIComponent(query)}`),
   deleteSession: (id: string) => call<{ ok: true }>('DELETE', `/sessions/${id}`),

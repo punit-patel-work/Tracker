@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { AiDraft, AiPreferences, AiUsage, AiLock } from '../ai/models.js';
 import bcrypt from 'bcryptjs';
-import { Exercise, Routine, Session, User } from '../models.js';
+import { Exercise, Routine, Session, User, WeekPlan } from '../models.js';
 import { text, number, dateISO, todayFor, timeZone, array, id } from '../validation.js';
 import { requireAuth } from '../auth.js';
 
@@ -62,6 +62,7 @@ router.get('/export', async (req, res) => {
 
   res.setHeader('Content-Disposition', `attachment; filename="gym-tracker-${todayFor(req.timeZone)}.json"`);
   res.json({
+    weekPlans: await WeekPlan.find({ user: req.user._id }).select('week slots -_id').lean(),
     aiPreferences: (await AiPreferences.findOne({ user: req.user._id }).lean())?.preferences ?? null,
     aiSuggestions: await AiDraft.find({ user: req.user._id }).select('task result createdAt').lean(),
     exportedAt: new Date().toISOString(),
@@ -73,6 +74,8 @@ router.get('/export', async (req, res) => {
       name: s.name,
       startedAt: s.startedAt,
       endedAt: s.endedAt,
+      feedback: s.feedback ?? null,
+      pausedMs: s.pausedMs ?? 0,
       bodyWeightKg: s.bodyWeightKg,
       totals: s.totals,
       entries: (s.entries ?? []).map((e) => ({
@@ -128,6 +131,7 @@ router.post('/delete-account', async (req, res) => {
   if (!ok) return res.status(403).json({ error: 'Password is incorrect' });
 
   await Promise.all([
+    WeekPlan.deleteMany({ user: req.user._id }),
     AiDraft.deleteMany({ user: req.user._id }),
     AiPreferences.deleteMany({ user: req.user._id }),
     AiUsage.deleteMany({ user: req.user._id }),

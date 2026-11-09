@@ -233,3 +233,22 @@
   .workout-metrics span { font-size: 9px; }
 }
 @media (max-height: 560px) { .workout-metrics { position: static; } }
+
+/* The accent connects each page heading to its training category. */
+.history-page { --heading-tone: var(--cat-back); }
+.progress-page { --heading-tone: var(--cat-core); }
+.profile-page { --heading-tone: var(--cat-shoulders); }
+:is(.routines-page, .history-page, .progress-page, .profile-page, .ai-page) .page-title > svg {
+  display: inline-block; flex: none; width: 36px; height: 36px; padding: 7px;
+  border-radius: 10px; color: var(--heading-tone, var(--accent-text));
+  background: color-mix(in srgb, var(--heading-tone, var(--accent-text)) 12%, var(--surface));
+}
+.routine-banner {
+  background: radial-gradient(ellipse at 88% 100%, color-mix(in srgb, var(--focus-tone) 32%, transparent), transparent 62%),
+    linear-gradient(115deg, var(--surface-inset), color-mix(in srgb, var(--focus-tone) 12%, var(--surface)));
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .routine-banner .training-art { transition: transform 180ms ease-out; }
+  .routine-card:focus-within .training-art, .routine-card:hover .training-art { transform: rotate(-2deg) translateY(-3px); }
+  .coach-tools button { transition: background-color 150ms ease, color 150ms ease; }
+}

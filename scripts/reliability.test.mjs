@@ -171,3 +171,59 @@ test('updated mail library composes messages without contacting an SMTP service'
   const result = await mailer.sendMail({ from: 'test@example.com', to: 'receiver@example.com', subject: 'Test', text: 'Local composition only' });
   assert.match(result.message.toString(), /Local composition only/);
 });
+
+test('a workout pauses at 120 minutes and an explicit resume excludes the break', async (t) => {
+  const start = Date.now();
+  const minute = 60_000;
+  let now = start;
+  t.mock.method(Date, 'now', () => now);
+  const session = await Session.create({ user: user._id, date: todayFor('America/Toronto'), status: 'active',
+    startedAt: new Date(start), bodyWeightKg: 80, entries: [{ exercise: exercise._id, sets: [{ reps: 8, done: true }] }] });
+  const path = '/sessions/' + session.id;
+  now = start + 120 * minute - 1;
+  assert.equal((await request(path + '/resume', 'POST', { revision: 0 })).data.session.lastResumedAt, null);
+  now += 1;
+  assert.equal((await request('/sessions/active')).data.session.id, session.id);
+  assert.equal((await request('/sessions', 'POST', {})).data.session.lastResumedAt, null);
+  now = start + 180 * minute - 1;
+  const resumed = await request(path + '/resume', 'POST', { revision: 0 });
+  assert.equal(resumed.status, 200);
+  assert.equal(resumed.data.session.pausedMs, 60 * minute - 1);
+  assert.equal(Date.parse(resumed.data.session.startedAt), start);
+  const again = await request(path + '/resume', 'POST', { revision: 0 });
+  assert.equal(again.data.session.revision, resumed.data.session.revision);
+  now += 5 * minute;
+  const result = await request(path + '/finish', 'POST', { revision: resumed.data.session.revision });
+  assert.equal(result.data.session.totals.durationMin, 125);
+  assert.equal(Date.parse(result.data.session.endedAt), now);
+  const edited = await request(path + '/completed', 'PATCH', { revision: result.data.session.revision,
+    name: 'Reviewed', date: session.date, durationMin: 125, entries: rows() });
+  assert.equal(edited.status, 200, JSON.stringify(edited.data));
+  assert.equal(edited.data.session.totals.durationMin, 125);
+  assert.equal(Date.parse(edited.data.session.endedAt), now);
+});
+
+test('expiry at minute 180 records minute 120, preserves checked work and discards empty sessions', async (t) => {
+  const start = Date.now();
+  const minute = 60_000;
+  let now = start + 120 * minute;
+  t.mock.method(Date, 'now', () => now);
+  const original = { user: user._id, date: todayFor('UTC'), startedAt: new Date(start), bodyWeightKg: 80 };
+  const create = () => Session.create({ ...original, entries: [{ exercise: exercise._id,
+    sets: [{ reps: 8, done: true }, { reps: 9, done: false }] }] });
+  const manualFinish = await create();
+  const finished = await request('/sessions/' + manualFinish.id + '/finish', 'POST', { revision: 0 });
+  assert.equal(finished.data.session.totals.durationMin, 120);
+  const session = await create();
+  now = start + 180 * minute;
+  assert.equal((await request('/sessions/' + session.id + '/resume', 'POST', { revision: 0 })).status, 409);
+  assert.equal((await request('/sessions/active')).data.session, null);
+  const saved = (await request('/sessions/' + session.id)).data.session;
+  assert.equal(saved.status, 'completed');
+  assert.equal(saved.totals.durationMin, 120);
+  assert.equal(Date.parse(saved.endedAt), start + 120 * minute);
+  assert.equal(saved.entries[0].sets.length, 1);
+  const empty = await Session.create(original);
+  assert.equal((await request('/sessions/active')).data.session, null);
+  assert.equal(await Session.exists({ _id: empty._id }), null);
+});

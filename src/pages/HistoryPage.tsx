@@ -96,7 +96,7 @@ export default function HistoryPage() {
 
   return (
 
-    <div className="stack">
+    <div className="stack history-page">
 
       <div className="page-head">
 
@@ -314,6 +314,11 @@ export default function HistoryPage() {
 
                   <div className="hist-body">
 
+                    {s.feedback && <section><h4>Workout feedback</h4>
+                      {s.feedback.difficulty && <p>Difficulty · {{ easy: 'Too easy', manageable: 'About right', hard: 'Too hard' }[s.feedback.difficulty]}</p>}
+                      {s.feedback.stoppedFor && <p>Stopped early · {s.feedback.stoppedFor}</p>}
+                      {s.feedback.note && <p>{s.feedback.note}</p>}
+                    </section>}
                     <CalorieBreakdown totals={s.totals} bodyWeightKg={s.bodyWeightKg} units={units} />
 
                     {s.entries.map((entry) => {

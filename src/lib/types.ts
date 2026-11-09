@@ -95,7 +95,13 @@ export interface Totals {
   muscleVolume: Record<string, number>;
 }
 
+export interface WorkoutFeedback {
+  difficulty: '' | 'easy' | 'manageable' | 'hard';
+  stoppedFor: '' | 'time' | 'fatigue' | 'pain' | 'other';
+  note: string;
+}
 export interface Session {
+  feedback?: WorkoutFeedback | null;
   revision?: number;
   id: string;
   date: string;
@@ -103,6 +109,8 @@ export interface Session {
   routineId: string | null;
   status: 'active' | 'completed';
   startedAt: string;
+  lastResumedAt?: string | null;
+  pausedMs?: number;
   endedAt: string | null;
   bodyWeightKg: number;
   notes: string;
@@ -111,6 +119,8 @@ export interface Session {
 }
 
 export interface RoutineExercise {
+  repCeiling?: number | null;
+  incrementKg?: number | null;
   targetDurationSec?: number | null;
   targetCardioMin?: number | null;
   exerciseId: string;
@@ -121,6 +131,7 @@ export interface RoutineExercise {
 }
 
 export interface Routine {
+  revision?: number;
   id: string;
   name: string;
   note: string;

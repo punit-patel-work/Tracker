@@ -1,15 +1,14 @@
+import { readFeedback, blocksProgression } from '../ai/progression.js';
 import { Router } from 'express';
 import { Exercise, Routine, Session } from '../models.js';
 import { requireAuth } from '../auth.js';
 import { entriesInput, accessibleExercises, text, dateISO, todayFor, number, id } from '../validation.js';
 import { completedWorkoutChanges } from '../session-edit.js';
-import { bestE1rm, CALC_VERSION, effectiveLoadKg, isWorkingSet, sessionTotals } from '../../shared/engine.js';
+import { bestE1rm, CALC_VERSION, effectiveLoadKg, isWorkingSet, sessionTotals, workoutPauseAt, WORKOUT_LIMIT_MS, RESUME_WINDOW_MS } from '../../shared/engine.js';
 
 const router = Router();
 router.use(requireAuth);
 router.param('id', (req, _res, next, value) => { try { id(value); next(); } catch (err) { next(err); } });
-
-const MAX_ACTIVE_WORKOUT_MS = 6 * 60 * 60 * 1000;
 
 /* --------------------------------------------------------------- helpers */
 
@@ -27,9 +26,12 @@ function serialize(s) {
     routineId: s.routine ? String(s.routine) : null,
     status: s.status,
     startedAt: s.startedAt,
+    lastResumedAt: s.lastResumedAt ?? null,
+    pausedMs: s.pausedMs ?? 0,
     endedAt: s.endedAt,
     bodyWeightKg: s.bodyWeightKg,
     notes: s.notes,
+    feedback: s.feedback ?? null,
     totals: s.totals ?? {},
     entries: (s.entries ?? []).map((e) => ({
       exerciseId: String(e.exercise),
@@ -55,6 +57,8 @@ async function recompute(doc) {
       entries: doc.entries.map((e) => ({ exerciseId: String(e.exercise), sets: e.sets, cardio: e.cardio })),
       bodyWeightKg: doc.bodyWeightKg,
       startedAt: doc.startedAt,
+      lastResumedAt: doc.lastResumedAt,
+      pausedMs: doc.pausedMs,
       endedAt: doc.endedAt,
       date: doc.date,
     },
@@ -86,8 +90,14 @@ export function finalizeEntries(entries) {
  * Cloud Run instance has slept. A periodic sweep below handles active servers.
  */
 async function closeExpiredSessions(userId = null) {
-  const cutoff = new Date(Date.now() - MAX_ACTIVE_WORKOUT_MS);
-  const query = { status: 'active', startedAt: { $lte: cutoff } };
+  const cutoff = new Date(Date.now() - WORKOUT_LIMIT_MS - RESUME_WINDOW_MS);
+  const query = {
+    status: 'active',
+    $or: [
+      { lastResumedAt: null, startedAt: { $lte: cutoff } },
+      { lastResumedAt: { $lte: cutoff } },
+    ],
+  };
   if (userId) query.user = userId;
 
   const stale = await Session.find(query);
@@ -100,7 +110,7 @@ async function closeExpiredSessions(userId = null) {
     }
 
     doc.status = 'completed';
-    doc.endedAt = new Date(doc.startedAt.getTime() + MAX_ACTIVE_WORKOUT_MS);
+    doc.endedAt = new Date(workoutPauseAt(doc));
     await recompute(doc);
     try { await doc.save(); } catch (err) { if (err.name === 'VersionError') continue; throw err; }
 
@@ -206,6 +216,24 @@ router.post('/', async (req, res) => {
     return res.json({ session: serialize(active.toObject()), resumed: true });
   }
   res.status(201).json({ session: serialize(doc.toObject()) });
+});
+
+// Reads and background saves never restart the clock. Resume is an explicit action.
+router.post('/:id/resume', async (req, res) => {
+  const doc = await Session.findOne({ _id: req.params.id, user: req.user._id });
+  if (!doc) return res.status(404).json({ error: 'Workout not found' });
+  const now = Date.now();
+  const pauseAt = workoutPauseAt(doc);
+  if (doc.status !== 'active' || now >= pauseAt + RESUME_WINDOW_MS) {
+    return res.status(409).json({ error: 'The time to resume this workout has ended.' });
+  }
+  if (now >= pauseAt) {
+    requireRevision(req, doc);
+    doc.pausedMs = (doc.pausedMs ?? 0) + now - pauseAt;
+    doc.lastResumedAt = new Date(now);
+    await doc.save();
+  }
+  res.json({ session: serialize(doc.toObject()) });
 });
 
 /** Explicit history edits stay separate from delayed active-workout autosaves. */
@@ -334,6 +362,7 @@ router.post('/:id/finish', async (req, res) => {
   }
 
   requireRevision(req, doc);
+  if (req.body.feedback != null) doc.feedback = readFeedback(req.body.feedback);
   doc.entries = finalizeEntries(doc.entries);
 
   if (!doc.entries.length) {
@@ -343,7 +372,7 @@ router.post('/:id/finish', async (req, res) => {
   }
 
   doc.status = 'completed';
-  doc.endedAt = new Date();
+  doc.endedAt = new Date(Math.min(Date.now(), workoutPauseAt(doc)));
   const { byId } = await recompute(doc);
   await doc.save();
 
@@ -429,7 +458,7 @@ router.get('/previous', async (req, res) => {
   })
     .sort({ date: -1, startedAt: -1 })
     .limit(60)
-    .select('date entries bodyWeightKg')
+    .select('date entries bodyWeightKg feedback notes')
     .lean();
 
   const byId = await accessibleExercises(ids, req.user._id);
@@ -439,6 +468,7 @@ router.get('/previous', async (req, res) => {
       const key = String(e.exercise);
       if (!ids.includes(key) || previous[key]) continue;
       previous[key] = {
+        holdProgression: blocksProgression(s, e) || s.feedback?.difficulty === 'hard' || !!s.feedback?.stoppedFor,
         date: s.date,
         bodyWeightKg: s.bodyWeightKg,
         sets: (e.sets ?? []).map((x) => ({

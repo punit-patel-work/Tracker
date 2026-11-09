@@ -3,6 +3,7 @@ import { useApp } from '../state/app';
 import { useWorkout } from '../state/workout';
 import { api } from '../lib/api';
 import { relativeDay, todayISO, fromKg, toKg, weightLabel } from '../lib/format';
+import RoutineReview from '../components/RoutineReview';
 import ExercisePicker from '../components/ExercisePicker';
 import ExerciseAlternatives from '../components/ExerciseAlternatives';
 import * as I from '../components/Icon';
@@ -20,6 +21,9 @@ export default function Routines({ go }: { go: (page: string) => void }) {
   const [editing, setEditing] = useState<Routine | 'new' | null>(null);
   const [busy, setBusy] = useState('');
   const [startError, setStartError] = useState('');
+
+  const [review, setReview] = useState<Routine | null>(null);
+  if (review) return <RoutineReview routine={routines.find(r => r.id === review.id) ?? review} onClose={() => setReview(null)}/>;
 
   if (editing) {
     return (
@@ -54,7 +58,7 @@ export default function Routines({ go }: { go: (page: string) => void }) {
           <h2 className="page-title">
             <I.Layers size={24} /> Routines
           </h2>
-          <p className="page-sub">Find your focus. Pick your session. Make it count.</p>
+          <p className="page-sub">{routines.length} saved {routines.length === 1 ? 'routine' : 'routines'}</p>
         </div>
         <div className="page-head-actions">
           <button className="btn btn-ghost" onClick={() => go('ai')}>Build with AI</button>
@@ -107,6 +111,7 @@ export default function Routines({ go }: { go: (page: string) => void }) {
               })}
             </ol>
 
+            <button className="btn btn-ghost wide" onClick={() => setReview(r)}>Review next workout</button>
             <button
               className="btn btn-primary wide"
               disabled={!!busy || !!session}
@@ -161,7 +166,7 @@ function RoutineEditor({
     setBusy(true);
     setError('');
     try {
-      const body = { name, note, exercises: list };
+      const body = { name, note, exercises: list, revision: routine?.revision };
       if (routine) await api.updateRoutine(routine.id, body);
       else await api.createRoutine(body);
       onDone();
@@ -268,6 +273,10 @@ function RoutineEditor({
                 <div className="routine-edit-targets">
                   {cardio ? <label><span>Minutes</span><input className="mini-input" type="number" min={1} max={90} value={re.targetCardioMin ?? ''} onChange={e => patch(re.exerciseId, {targetCardioMin: e.target.value ? Number(e.target.value) : null})}/></label> : <>
                     <label><span>{weightLabel(units)}</span><input className="mini-input" type="number" min={0} step="any" value={re.targetWeightKg == null ? '' : Number(fromKg(re.targetWeightKg,units).toFixed(1))} onChange={e => patch(re.exerciseId, {targetWeightKg: e.target.value ? toKg(Number(e.target.value),units) : null})}/></label>
+                    {!ex?.isTimed && <>
+                      <label><span>Upper rep target</span><input className="mini-input" type="number" min={re.targetReps || 1} value={re.repCeiling ?? ''} onChange={e => patch(re.exerciseId, { repCeiling: e.target.value ? Number(e.target.value) : null })}/></label>
+                      <label><span>Weight step ({weightLabel(units)})</span><input className="mini-input" type="number" min={0.01} step="any" value={re.incrementKg == null ? '' : Number(fromKg(re.incrementKg, units).toFixed(3))} onChange={e => patch(re.exerciseId, { incrementKg: e.target.value ? toKg(Number(e.target.value), units) : null })}/></label>
+                    </>}
                     <label><span>Rest (sec)</span><input className="mini-input" type="number" min={0} max={600} value={re.restSec ?? ''} onChange={e => patch(re.exerciseId, {restSec: e.target.value ? Number(e.target.value) : null})}/></label>
                   </>}
                 </div>

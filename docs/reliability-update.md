@@ -33,7 +33,7 @@ Use Node 22.13+ within the 22.x release line, or Node 24+. Install from the lock
 
 The startup unique index intentionally fails if legacy duplicate active sessions remain. After resolving them, restart the API. Catalog metadata lives in `app_metadata`; future catalog changes must bump the revision in `server/db.js`.
 
-Historical totals are not silently rewritten. Editing and saving a completed workout recalculates it with calculation version 3. The existing six-hour active-workout expiry still applies; unsynced changes to an already-ended workout can be exported from the conflict notice.
+Historical totals are not silently rewritten. Editing and saving a completed workout recalculates it with calculation version 3. A running workout pauses after 120 minutes. Resume within the following 60 minutes to continue from the paused time. Otherwise it closes at the pause point; unsynced changes to an already-ended workout can be exported from the conflict notice.
 
 Offline reopening requires a prior successful online visit and, for the application shell itself, an installed production service worker on HTTPS or localhost. History searches, new workouts and finishing still require the API. Local account/workout data is stored on that device; successful sign-out clears its cached account and that account's active backup, with a warning for unsynced work.
 

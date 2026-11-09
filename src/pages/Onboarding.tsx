@@ -159,7 +159,7 @@ export default function Onboarding() {
               <div className="callout">
                 <I.Flame size={19} />
                 <div>
-                  <strong>{num(estimate)} kcal/day</strong> at complete rest. Workout burn is reported on top of this.
+                  <strong>{num(estimate)} kcal/day</strong> estimated over 24 hours at rest.
                 </div>
               </div>
             )}

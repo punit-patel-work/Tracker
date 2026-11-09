@@ -72,6 +72,8 @@ export function routineInput(list) {
     seen.add(exercise);
     return { exercise, targetSets: number(e.targetSets ?? 3, 'Target sets', 1, 100, true),
       targetReps: number(e.targetReps ?? 8, 'Target reps', 0, 10000, true),
+      repCeiling: e.repCeiling == null ? null : number(e.repCeiling, 'Upper rep target', Math.max(1,e.targetReps ?? 8), 10000, true),
+      incrementKg: e.incrementKg == null ? null : number(e.incrementKg, 'Weight increment', 0.01, 50),
       targetWeightKg: e.targetWeightKg == null ? null : number(e.targetWeightKg, 'Target weight', 0, 2000),
       restSec: e.restSec == null ? null : number(e.restSec, 'Rest seconds', 0, 3600),
       targetDurationSec: e.targetDurationSec == null ? null : number(e.targetDurationSec, 'Hold seconds', 5, 600),
