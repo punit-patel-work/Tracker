@@ -12,7 +12,7 @@ function tokenFromUrl(): string | null {
 }
 
 export default function Auth({ themeToggle }: { themeToggle: ReactNode }) {
-  const { signIn, signUp, setUser } = useApp();
+  const { signIn, signUp, retryBoot } = useApp();
   const [resetToken] = useState(tokenFromUrl);
   const [mode, setMode] = useState<Mode>(resetToken ? 'reset' : 'login');
   const [name, setName] = useState('');
@@ -42,9 +42,9 @@ export default function Auth({ themeToggle }: { themeToggle: ReactNode }) {
         await api.forgot(email);
         setNotice('If an account exists for that address, we have sent a reset link. It expires in one hour.');
       } else if (mode === 'reset') {
-        const { user } = await api.reset(resetToken ?? '', password);
+        await api.reset(resetToken ?? '', password);
         window.history.replaceState({}, '', window.location.pathname);
-        setUser(user);
+        retryBoot();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -123,15 +123,15 @@ export default function Auth({ themeToggle }: { themeToggle: ReactNode }) {
 
           {mode !== 'reset' && (
             <div className="field">
-              <label htmlFor="au-email">Email</label>
+              <label htmlFor="au-email">{mode === 'login' ? 'Email or username' : 'Email'}</label>
               <input
                 id="au-email"
                 className="input"
-                type="email"
+                type={mode === 'login' ? 'text' : 'email'}
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
+                autoComplete={mode === 'login' ? 'username' : 'email'}
                 required
               />
             </div>

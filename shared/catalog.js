@@ -6798,7 +6798,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Wall%20Sit%20proper%20form%20technique"
   },
@@ -9016,7 +9016,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": false,
     "bodyweightFactor": 0,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Plate%20Pinch%20Hold%20proper%20form%20technique"
   },
@@ -9070,7 +9070,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Dead%20Hang%20proper%20form%20technique"
   },
@@ -9097,7 +9097,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Towel%20Hang%20proper%20form%20technique"
   },
@@ -9416,7 +9416,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": false,
     "bodyweightFactor": 0,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Cable%20Pallof%20Hold%20proper%20form%20technique"
   },
@@ -9760,7 +9760,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Hollow%20Body%20Hold%20proper%20form%20technique"
   },
@@ -9824,7 +9824,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Forearm%20Plank%20proper%20form%20technique"
   },
@@ -9857,7 +9857,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20High%20Plank%20proper%20form%20technique"
   },
@@ -9890,7 +9890,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Kneeling%20Plank%20proper%20form%20technique"
   },
@@ -9921,7 +9921,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Side%20Plank%20proper%20form%20technique"
   },
@@ -9952,7 +9952,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Kneeling%20Side%20Plank%20proper%20form%20technique"
   },
@@ -10018,7 +10018,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Long-Lever%20Plank%20proper%20form%20technique"
   },
@@ -10082,7 +10082,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20Copenhagen%20Side%20Plank%20proper%20form%20technique"
   },
@@ -10115,7 +10115,7 @@ export const CATALOG = [
     "barWeightKg": 0,
     "isBodyweight": true,
     "bodyweightFactor": 0.6,
-    "isTimed": false,
+    "isTimed": true,
     "isDistanceBased": false,
     "howToUrl": "https://www.youtube.com/results?search_query=how%20to%20RKC%20Plank%20proper%20form%20technique"
   },
@@ -10567,6 +10567,7 @@ export const CATALOG = [
   {
     "id": "EX-701",
     "slug": "treadmill-running-walking",
+    "energyModel": "walk-run",
     "name": "Treadmill (Running/Walking)",
     "type": "cardio",
     "category": "cardio",
@@ -10635,6 +10636,7 @@ export const CATALOG = [
   {
     "id": "EX-703",
     "slug": "stationary-bike-upright",
+    "energyModel": "cycling",
     "name": "Stationary Bike (Upright)",
     "type": "cardio",
     "category": "cardio",
@@ -10699,6 +10701,7 @@ export const CATALOG = [
   {
     "id": "EX-705",
     "slug": "rowing-machine-ergometer",
+    "energyModel": "rowing",
     "name": "Rowing Machine (Ergometer)",
     "type": "cardio",
     "category": "cardio",

@@ -220,3 +220,16 @@
   .routine-banner h3 { font-size: 29px; }
   .routine-banner .training-art { width: 108px; }
 }
+
+/* Keep the logging controls close to the workout summary. */
+.workout-metrics { padding: 10px 8px; border-radius: 10px; position: sticky; top: calc(var(--header-h) + 68px); z-index: 19; }
+.workout-metrics b { font-size: 22px; }
+.workout .session-progress { margin: 8px 0; padding: 10px 14px; }
+.set-line.done { box-shadow: inset 3px 0 var(--accent-text); }
+.set-line:not(.done) .set-input { color: var(--text-2); }
+@media (max-width: 599px) {
+  .workout-metrics { padding: 8px 4px; top: calc(var(--header-h) + 64px); }
+  .workout-metrics b { font-size: 18px; }
+  .workout-metrics span { font-size: 9px; }
+}
+@media (max-height: 560px) { .workout-metrics { position: static; } }

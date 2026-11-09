@@ -14,7 +14,11 @@ import {
 } from '../lib/format';
 import { effectiveLoadKg, estimated1RM, suggestNextWeight } from '../../shared/engine.js';
 import ExercisePicker from '../components/ExercisePicker';
+import ExerciseAlternatives from '../components/ExerciseAlternatives';
 import PlateMath from '../components/PlateMath';
+import CalorieBreakdown from '../components/CalorieBreakdown';
+import ManualLog from './ManualLog';
+import { useModal } from '../components/useModal';
 import { useTick } from '../components/common';
 import * as I from '../components/Icon';
 import type { Entry, Exercise, Intensity, NewPR, PreviousPerformance, Session, Units, WorkSet } from '../lib/types';
@@ -26,6 +30,9 @@ export default function Workout({ go }: { go: (page: string) => void }) {
   const w = useWorkout();
   const [picking, setPicking] = useState(false);
   const [summary, setSummary] = useState<{ session: Session | null; newPRs: NewPR[] } | null>(null);
+  const [editingFinished, setEditingFinished] = useState(false);
+  const [reviewFinish, setReviewFinish] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [finishError, setFinishError] = useState('');
   const now = useTick(1000, !!w.session);
@@ -33,8 +40,12 @@ export default function Workout({ go }: { go: (page: string) => void }) {
   const units = user?.units ?? 'metric';
 
   if (!w.session) {
+    if (editingFinished && summary?.session) return <ManualLog session={summary.session}
+      onClose={() => setEditingFinished(false)} onSaved={(session) => {
+        setSummary({ session, newPRs: [] }); setEditingFinished(false);
+      }} />;
     return summary ? (
-      <Summary data={summary} units={units} onClose={() => go('home')} />
+      <Summary data={summary} units={units} onClose={() => go('home')} onEdit={() => setEditingFinished(true)} />
     ) : (
       <div className="card empty">
         <I.Dumbbell size={40} />
@@ -53,15 +64,18 @@ export default function Workout({ go }: { go: (page: string) => void }) {
     ? entry.cardio?.done : entry.sets.length > 0 && entry.sets.every((set) => set.done)).length;
 
   const finish = async () => {
+    if (finishing) return;
+    setFinishing(true);
     setFinishError('');
     try {
       const result = await w.finish();
       setSummary({ session: result.session, newPRs: result.newPRs });
-    } catch {
+      setReviewFinish(false);
+    } catch (error) {
       // Finishing needs the server (it decides PRs). The workout stays open and
       // every set is still on the device, so nothing is lost by waiting.
-      setFinishError('No connection. Your sets are saved on this device — reconnect and finish again.');
-    }
+      setFinishError(error instanceof Error ? error.message : 'Could not finish. Your device copy is preserved.');
+    } finally { setFinishing(false); }
   };
 
   return (
@@ -77,6 +91,7 @@ export default function Workout({ go }: { go: (page: string) => void }) {
             {w.saveState === 'saved' && 'Saved'}
             {w.saveState === 'offline' && 'Saved on device — will sync'}
             {w.saveState === 'idle' && 'Autosaving'}
+            {(w.saveState === 'conflict' || w.saveState === 'error') && 'Save needs attention'}
           </span>
         </div>
         {w.undo && (
@@ -84,7 +99,7 @@ export default function Workout({ go }: { go: (page: string) => void }) {
             <I.Undo size={17} />
           </button>
         )}
-        <button className="btn btn-primary" onClick={finish}>
+        <button className="btn btn-primary" onClick={() => setReviewFinish(true)} disabled={finishing || w.loading}>
           Finish
         </button>
       </div>
@@ -104,13 +119,22 @@ export default function Workout({ go }: { go: (page: string) => void }) {
           <b>{w.entries.filter((e) => e.sets.some((s) => s.done) || e.cardio?.done).length}</b>
         </div>
         <div>
-          <span>Burn</span>
+          <span>Est. calories</span>
           <b>
             {num(w.totals?.totalKcal ?? 0)} <small>kcal</small>
           </b>
         </div>
       </div>
 
+      {w.syncError && <div className="offline-note" role="alert"><div><p>{w.syncError}</p><div className="dialog-actions">
+        {w.saveState === 'conflict' && <>
+          <button className="btn btn-ghost btn-sm" onClick={() => void w.resolveConflict('mine')}>Keep my changes</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { if (window.confirm('Replace your local edits with the saved workout? Export a backup first if you want to keep both.')) void w.resolveConflict('server'); }}>Use saved version</button>
+        </>}
+        <button className="btn btn-ghost btn-sm" onClick={w.exportBackup}>Export device copy</button>
+      </div></div></div>}
+      <p className="hint">Check off sets and mark cardio complete as you go. Only completed work counts toward calories and is saved when you finish.</p>
+      <CalorieBreakdown totals={w.totals ?? {}} bodyWeightKg={w.session.bodyWeightKg} units={units} live />
       {w.entries.length > 0 && <div className="session-progress">
         <div><span>Session progress</span><strong>{completedExercises} of {w.entries.length} exercises complete</strong></div>
         <progress value={completedExercises} max={w.entries.length} aria-label={`${completedExercises} of ${w.entries.length} exercises complete`} />
@@ -167,6 +191,8 @@ export default function Workout({ go }: { go: (page: string) => void }) {
         />
       )}
 
+      {reviewFinish && <FinishReview entries={w.entries} busy={finishing} error={finishError}
+        onClose={() => { if (!finishing) setReviewFinish(false); }} onFinish={finish} />}
       {confirmCancel && (
         <div className="sheet-backdrop" onClick={() => setConfirmCancel(false)} role="presentation">
           <div className="dialog" onClick={(e) => e.stopPropagation()} role="dialog">
@@ -239,7 +265,8 @@ function ExerciseCard({
         />
 
         {swapping && (
-          <ExercisePicker
+          <ExerciseAlternatives
+            sourceId={entry.exerciseId}
             exclude={w.entries.map((e) => e.exerciseId)}
             onPick={(ex) => w.swapExercise(entry.exerciseId, ex.id)}
             onClose={() => setSwapping(false)}
@@ -372,7 +399,8 @@ function ExerciseCard({
       />
 
       {swapping && (
-        <ExercisePicker
+        <ExerciseAlternatives
+          sourceId={entry.exerciseId}
           exclude={w.entries.map((e) => e.exerciseId)}
           onPick={(ex) => w.swapExercise(entry.exerciseId, ex.id)}
           onClose={() => setSwapping(false)}
@@ -421,6 +449,7 @@ function ExerciseCard({
         </p>
       )}
 
+      <p className="hint">Unchecked rows are targets. Tap the checkmark after each completed set.</p>
       <div className="set-head">
         <span>Set</span>
         <span>Previous</span>
@@ -756,10 +785,12 @@ function Summary({
   data,
   units,
   onClose,
+  onEdit,
 }: {
   data: { session: Session | null; newPRs: NewPR[] };
   units: Units;
   onClose: () => void;
+  onEdit: () => void;
 }) {
   const { session, newPRs } = data;
   const unit = weightLabel(units);
@@ -808,7 +839,7 @@ function Summary({
             </b>
           </div>
           <div>
-            <span>Energy</span>
+            <span>Est. calories</span>
             <b>
               {num(t.totalKcal ?? 0)} <small>kcal</small>
             </b>
@@ -819,6 +850,7 @@ function Summary({
           </div>
         </div>
 
+        <CalorieBreakdown totals={t} bodyWeightKg={session.bodyWeightKg} units={units} />
         {newPRs.length > 0 && (
           <div className="pr-banner">
             <h4>
@@ -839,6 +871,7 @@ function Summary({
         )}
 
         <div className="dialog-actions">
+          <button className="btn btn-ghost wide" onClick={onEdit}>Edit workout</button>
           <button className="btn btn-primary wide" onClick={onClose}>
             Done
           </button>
@@ -968,4 +1001,28 @@ function cardioSummary(prev: PreviousPerformance, units: Units): string {
 function round(n: number, digits: number): number {
   const f = 10 ** digits;
   return Math.round(n * f) / f;
+}
+
+function FinishReview({ entries, busy, error, onClose, onFinish }: {
+  entries: Entry[]; busy: boolean; error: string; onClose: () => void; onFinish: () => void;
+}) {
+  const ref = useModal(onClose);
+  const sets = entries.flatMap((entry) => entry.sets);
+  const completed = sets.filter((set) => set.done).length;
+  const unchecked = sets.length - completed;
+  const cardio = entries.filter((entry) => entry.cardio?.done).length;
+  const pendingCardio = entries.filter((entry) => entry.cardio && !entry.cardio.done).length;
+  return <div className="sheet-backdrop" role="presentation" onClick={onClose}>
+    <div ref={ref} className="dialog" role="dialog" aria-modal="true" aria-labelledby="finish-title" onClick={(e) => e.stopPropagation()}>
+      <h3 id="finish-title">Review your workout</h3>
+      <p>{completed} completed sets · {cardio} completed cardio entries</p>
+      {(unchecked > 0 || pendingCardio > 0) && <p className="hint">{unchecked} unchecked sets and {pendingCardio} unchecked cardio entries will be excluded. Go back to mark any work you completed.</p>}
+      {!completed && !cardio && <p>No completed work will be saved. Finishing will discard this empty workout.</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Keep training</button>
+        <button className="btn btn-primary" onClick={onFinish} disabled={busy}>{busy ? 'Saving...' : completed || cardio ? 'Save completed work' : 'Discard empty workout'}</button>
+      </div>
+    </div>
+  </div>;
 }

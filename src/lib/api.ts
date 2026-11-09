@@ -24,7 +24,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     res = await fetch(`/api${path}`, {
       method,
       credentials: 'same-origin', // the session cookie is httpOnly
-      headers: body ? { 'content-type': 'application/json' } : undefined,
+      headers: { 'X-Time-Zone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(body ? { 'content-type': 'application/json' } : {}) },
+      signal: AbortSignal.timeout(15000),
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -81,13 +83,15 @@ export const api = {
 
   activeSession: () => call<{ session: Session | null }>('GET', '/sessions/active'),
   startSession: (body: { routineId?: string; name?: string }) => call<{ session: Session }>('POST', '/sessions', body),
-  saveSession: (id: string, body: { entries?: Entry[]; name?: string; notes?: string }) =>
+  saveSession: (id: string, body: { revision: number; entries?: Entry[]; name?: string; notes?: string }) =>
     call<{ session: Session }>('PATCH', `/sessions/${id}`, body),
-  finishSession: (id: string) =>
-    call<{ session: Session | null; newPRs: NewPR[]; discarded: boolean }>('POST', `/sessions/${id}/finish`),
-  sessions: (limit = 30, skip = 0) =>
-    call<{ sessions: Session[]; total: number }>('GET', `/sessions?limit=${limit}&skip=${skip}`),
+  finishSession: (id: string, revision: number) =>
+    call<{ session: Session | null; newPRs: NewPR[]; discarded: boolean }>('POST', `/sessions/${id}/finish`, { revision }),
+  sessions: (limit = 30, skip = 0, query = '') =>
+    call<{ sessions: Session[]; total: number }>('GET', `/sessions?limit=${limit}&skip=${skip}&q=${encodeURIComponent(query)}`),
   deleteSession: (id: string) => call<{ ok: true }>('DELETE', `/sessions/${id}`),
+  editCompletedSession: (id: string, body: { revision: number; date: string; name: string; durationMin: number; entries: Entry[] }) =>
+    call<{ session: Session }>('PATCH', `/sessions/${id}/completed`, body),
   logManual: (body: { date: string; name?: string; durationMin?: number; entries: Entry[] }) =>
     call<{ session: Session }>('POST', '/sessions/manual', body),
   saveAsRoutine: (id: string, name?: string) =>

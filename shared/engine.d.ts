@@ -13,6 +13,8 @@ export interface EngineExercise {
   isBodyweight?: boolean;
   bodyweightFactor?: number;
   isTimed?: boolean;
+  energyModel?: 'fixed' | 'walk-run' | 'cycling' | 'rowing';
+  archived?: boolean;
   isDistanceBased?: boolean;
 }
 
@@ -104,4 +106,4 @@ export declare function suggestNextWeight(
   exercise: EngineExercise | undefined,
 ): { fromKg: number; toKg: number; stepKg: number; sets: number; reps: number } | null;
 export declare function weekKey(iso: string): string;
-export declare function weekStreak(dates: string[]): number;
+export declare function weekStreak(dates: string[], today?: string): number;

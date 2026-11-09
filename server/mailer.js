@@ -20,7 +20,9 @@ export const mailReady = configured;
 
 export async function verifyMailer() {
   if (!transporter) {
-    console.log('[mail] SMTP not configured — reset links will be logged instead of sent');
+    console.log(process.env.NODE_ENV === 'production'
+      ? '[mail] SMTP not configured — account emails are unavailable'
+      : '[mail] SMTP not configured — reset links will be logged instead of sent');
     return false;
   }
   try {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { Routine } from '../models.js';
+import { routineInput, accessibleExercises, text, id } from '../validation.js';
 import { requireAuth } from '../auth.js';
 
 const router = Router();
@@ -12,22 +13,27 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const { name, note, exercises } = req.body ?? {};
+  text(name, 'Routine name'); text(note ?? '', 'Routine notes', 2000, false);
+  const validated = routineInput(exercises);
+  await accessibleExercises(validated.map((e) => e.exercise), req.user._id);
   if (!name?.trim()) return res.status(400).json({ error: 'Give the routine a name' });
   const doc = await Routine.create({
     user: req.user._id,
     name: name.trim(),
     note: note ?? '',
-    exercises: normalize(exercises),
+    exercises: validated,
   });
   res.status(201).json({ routine: serialize(doc.toObject()) });
 });
 
 router.patch('/:id', async (req, res) => {
+  id(req.params.id);
   const doc = await Routine.findOne({ _id: req.params.id, user: req.user._id });
   if (!doc) return res.status(404).json({ error: 'Routine not found' });
-  if (req.body.name !== undefined) doc.name = req.body.name;
-  if (req.body.note !== undefined) doc.note = req.body.note;
-  if (req.body.exercises !== undefined) doc.exercises = normalize(req.body.exercises);
+  if (req.body.name !== undefined) doc.name = text(req.body.name, 'Routine name');
+  if (req.body.note !== undefined) doc.note = text(req.body.note, 'Routine notes', 2000, false);
+  if (req.body.exercises !== undefined) doc.exercises = routineInput(req.body.exercises);
+  await accessibleExercises(doc.exercises.map((e) => String(e.exercise)), req.user._id);
   await doc.save();
   res.json({ routine: serialize(doc.toObject()) });
 });
@@ -35,24 +41,12 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const doc = await Routine.findOneAndUpdate(
     { _id: req.params.id, user: req.user._id },
-    { archived: true },
-    { new: true },
+    { $set: { archived: true }, $inc: { __v: 1 } },
+    { returnDocument: 'after' },
   );
   if (!doc) return res.status(404).json({ error: 'Routine not found' });
   res.json({ ok: true });
 });
-
-function normalize(list) {
-  return (list ?? [])
-    .filter((e) => e.exerciseId)
-    .map((e) => ({
-      exercise: e.exerciseId,
-      targetSets: Number(e.targetSets) || 3,
-      targetReps: Number(e.targetReps) || 8,
-      targetWeightKg: e.targetWeightKg ?? null,
-      restSec: e.restSec ?? null,
-    }));
-}
 
 function serialize(r) {
   return {
@@ -66,6 +60,8 @@ function serialize(r) {
       targetReps: e.targetReps,
       targetWeightKg: e.targetWeightKg,
       restSec: e.restSec,
+      targetDurationSec: e.targetDurationSec,
+      targetCardioMin: e.targetCardioMin,
     })),
   };
 }

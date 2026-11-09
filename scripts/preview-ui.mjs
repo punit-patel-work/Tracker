@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import { CATALOG } from '../shared/catalog.js';
 import { sessionTotals, personalRecords, bestE1rm, weekKey, weekStreak, hardSetCredit } from '../shared/engine.js';
 import { progressRangeStart } from '../shared/progress.js';
+import { completedWorkoutChanges } from '../server/session-edit.js';
 
 const today = new Date().toLocaleDateString('en-CA');
 const shift = (date, days) => { const d = new Date(`${date}T12:00:00`); d.setDate(d.getDate() + days); return d.toLocaleDateString('en-CA'); };
@@ -25,7 +26,7 @@ let sessions = Array.from({ length: 42 }, (_, i) => {
   const startedAt = `${date}T10:00:00`; const endedAt = `${date}T10:48:00`;
   const entries = r.exercises.map((e) => ({ exerciseId: e.exerciseId,
     sets: Array.from({ length: 3 }, () => ({ reps: 8, weightKg: Math.max(20, 65 - Math.floor(i / 4) * 2.5), done: true, restSec: 90 })), notes: '' }));
-  const s = { id: `preview-session-${i}`, name: r.name, routineId: r.id, status: 'completed', date, startedAt, endedAt,
+  const s = { id: `preview-session-${i}`, revision: 0, name: r.name, routineId: r.id, status: 'completed', date, startedAt, endedAt,
     bodyWeightKg: 78.4, notes: '', entries };
   return { ...s, totals: sessionTotals(s, byId) };
 });
@@ -121,18 +122,67 @@ const previewPlugin = {
         const s = sessions.find((s) => s.entries.some((e) => e.exerciseId === id)); const entry = s?.entries.find((e) => e.exerciseId === id);
         return entry ? [[id, { date: s.date, bodyWeightKg: s.bodyWeightKg, sets: entry.sets, cardio: null, bestE1rm: bestE1rm(entry.sets, byId.get(id), s.bodyWeightKg) }]] : [];
       })) });
-      if (path === '/sessions' && req.method === 'GET') return send({ sessions: (empty ? [] : sessions).slice(Number(url.searchParams.get('skip')) || 0, Number(url.searchParams.get('limit')) || 30), total: empty ? 0 : sessions.length });
+      if (path === '/sessions' && req.method === 'GET') {
+        const query = (url.searchParams.get('q') ?? '').toLowerCase();
+        const matched = (empty ? [] : sessions).filter((s) => [s.name, s.date, ...s.entries.map((e) => byId.get(e.exerciseId)?.name ?? '')].some((value) => value.toLowerCase().includes(query)))
+          .sort((a, b) => b.date.localeCompare(a.date) || b.startedAt.localeCompare(a.startedAt));
+        const skip = Number(url.searchParams.get('skip')) || 0;
+        return send({ sessions: matched.slice(skip, skip + (Number(url.searchParams.get('limit')) || 30)), total: matched.length });
+      }
       if (path === '/sessions' && req.method === 'POST') {
+        if (active) return send({ session: active });
         const routine = routines.find((r) => r.id === body.routineId);
-        active = { id: `preview-active-${Date.now()}`, name: routine?.name ?? 'Freestyle workout', routineId: routine?.id ?? null, status: 'active',
+        active = { id: `preview-active-${Date.now()}`, revision: 0, name: routine?.name ?? 'Freestyle workout', routineId: routine?.id ?? null, status: 'active',
           date: today, startedAt: new Date().toISOString(), endedAt: null, bodyWeightKg: user.currentWeightKg, notes: '', totals: {},
           entries: routine?.exercises.map((e) => ({ exerciseId: e.exerciseId, sets: Array.from({ length: e.targetSets }, () => ({ reps: e.targetReps, weightKg: e.targetWeightKg, done: false, restSec: e.restSec })), notes: '' })) ?? [] };
+        active.totals = sessionTotals(active, byId);
         return send({ session: active });
       }
-      if (path.endsWith('/finish') && active) { active.endedAt = new Date().toISOString(); active.status = 'completed'; active.totals = sessionTotals(active, byId);
-        const finished = active; if (finished.totals.workingSets) { sessions.unshift(finished); empty = false; } active = null;
-        return send({ session: finished, newPRs: [], discarded: !finished.totals.workingSets }); }
-      if (path.startsWith('/sessions/') && req.method === 'PATCH' && active) { active = { ...active, ...body }; active.totals = sessionTotals(active, byId); return send({ session: active }); }
+      if (path === `/sessions/${active?.id}/finish` && req.method === 'POST' && active) {
+        if (body.revision !== active.revision) return send({ error: 'Workout changed elsewhere. Reload before saving.' }, 409);
+        active.revision++;
+        active.entries = active.entries.map((entry) => ({ ...entry,
+          sets: entry.sets.filter((set) => set.done === true), cardio: entry.cardio?.done === true ? entry.cardio : null,
+        })).filter((entry) => entry.sets.length || entry.cardio);
+        active.endedAt = new Date().toISOString(); active.status = 'completed'; active.totals = sessionTotals(active, byId);
+        const finished = active.entries.length ? active : null;
+        if (finished) { sessions.unshift(finished); empty = false; } active = null;
+        return send({ session: finished, newPRs: [], discarded: !finished }); }
+      if (/^\/sessions\/[^/]+\/completed$/.test(path) && req.method === 'PATCH') {
+        const session = sessions.find((s) => s.id === path.split('/')[2]);
+        if (!session) return send({ error: 'Workout not found' }, 404);
+        if (body.revision !== session.revision) return send({ error: 'Workout changed elsewhere. Reload before saving.' }, 409);
+        try {
+          const changes = completedWorkoutChanges(body, session, today);
+          Object.assign(session, changes, { entries: changes.entries.map(({ exercise, ...entry }) => ({ ...entry, exerciseId: exercise })) });
+          session.totals = sessionTotals(session, byId);
+          session.revision++;
+          return send({ session });
+        } catch (error) { return send({ error: error.message }, 400); }
+      }
+      if (path === '/sessions/manual' && req.method === 'POST') {
+        try {
+          const changes = completedWorkoutChanges(body, { date: today, bodyWeightKg: user.currentWeightKg }, today);
+          const session = { id: `preview-session-${Date.now()}`, revision: 0, status: 'completed', ...changes,
+            entries: changes.entries.map(({ exercise, ...entry }) => ({ ...entry, exerciseId: exercise })) };
+          session.totals = sessionTotals(session, byId); sessions.unshift(session); empty = false;
+          return send({ session }, 201);
+        } catch (error) { return send({ error: error.message }, 400); }
+      }
+      if (path === `/sessions/${active?.id}` && req.method === 'PATCH' && active) {
+        if (body.revision !== active.revision) return send({ error: 'Workout changed elsewhere. Reload before saving.' }, 409);
+        active = { ...active, entries: body.entries ?? active.entries, name: body.name ?? active.name, notes: body.notes ?? active.notes, revision: active.revision + 1 };
+        active.totals = sessionTotals(active, byId); return send({ session: active });
+      }
+      if (/^\/sessions\/[^/]+$/.test(path) && req.method === 'GET') {
+        const session = [active, ...sessions].find((s) => s?.id === path.split('/')[2]);
+        return session ? send({ session }) : send({ error: 'Workout not found' }, 404);
+      }
+      if (/^\/sessions\/[^/]+$/.test(path) && req.method === 'DELETE') {
+        const id = path.split('/')[2]; sessions = sessions.filter((s) => s.id !== id);
+        if (active?.id === id) active = null;
+        return send({ ok: true });
+      }
       if (path === '/me' && req.method === 'PATCH') { user = { ...user, ...body }; return send({ user }); }
       if (path === '/me/weight' && req.method === 'POST') { user.currentWeightKg = body.kg; user.weighIns.push({ date: body.date ?? today, kg: body.kg }); return send({ user }); }
       return send({ error: 'This action is unavailable in the sample-data preview.' }, 400);

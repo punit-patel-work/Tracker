@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { Exercise, Session } from '../models.js';
 import { requireAuth } from '../auth.js';
+import { todayFor, accessibleExercises, id } from '../validation.js';
+import { cacheOverview } from '../stats-cache.js';
 import { progressRangeStart } from '../../shared/progress.js';
 import {
   bestE1rm,
@@ -23,11 +25,11 @@ router.use(requireAuth);
  * and cached when each session was saved, so the common path never touches the
  * `entries` array at all.
  */
-router.get('/overview', async (req, res) => {
-  const today = localToday();
+router.get('/overview', cacheOverview, async (req, res) => {
+  const today = todayFor(req.timeZone);
   const rangeWeeks = Math.floor(Math.min(Math.max(Number(req.query.weeks) || 12, 4), 260));
   const from = progressRangeStart(today, rangeWeeks);
-  const cutoff28 = shiftDays(localToday(), -28);
+  const cutoff28 = shiftDays(todayFor(req.timeZone), -28);
 
   const [light, recent, forPrs] = await Promise.all([
     // Every session, but only its cached totals — this drives most of the page.
@@ -66,8 +68,8 @@ router.get('/overview', async (req, res) => {
   const weeklyHistory = [...weeks.values()].filter((row) => row.week <= today).sort((a, b) => a.week.localeCompare(b.week));
   const weekly = weeklyHistory.filter((row) => row.week >= from);
 
-  const thisWeekKey = weekKey(localToday());
-  const lastWeekKey = weekKey(shiftDays(localToday(), -7));
+  const thisWeekKey = weekKey(todayFor(req.timeZone));
+  const lastWeekKey = weekKey(shiftDays(todayFor(req.timeZone), -7));
   const blank = { week: '', volumeKg: 0, kcal: 0, sessions: 0, minutes: 0, cardioMinutes: 0, workingSets: 0 };
 
   // Muscle balance over the last 28 days — where the neglect shows up
@@ -115,7 +117,7 @@ router.get('/overview', async (req, res) => {
     }
   }
 
-  const fourWeeksAgo = shiftDays(localToday(), -28);
+  const fourWeeksAgo = shiftDays(todayFor(req.timeZone), -28);
   const currentWeight = req.user.weighIns.length ? req.user.weighIns[req.user.weighIns.length - 1].kg : 0;
 
   const lifts = [...perLift.values()]
@@ -218,7 +220,7 @@ router.get('/overview', async (req, res) => {
 
   res.json({
     sessionCount: sessions.length,
-    streak: weekStreak(sessions.map((s) => s.date)),
+    streak: weekStreak(sessions.map((s) => s.date), today),
     goal: req.user.goal,
     range: { weeks: rangeWeeks, from },
     lifts,
@@ -252,7 +254,7 @@ router.get('/exercise/:id', async (req, res) => {
     .select('date entries bodyWeightKg')
     .lean();
 
-  const ex = await Exercise.findById(req.params.id).lean();
+  const ex = (await accessibleExercises([id(req.params.id)], req.user._id)).get(req.params.id);
 
   const points = [];
   for (const s of sessions) {
@@ -284,11 +286,6 @@ function normaliseTotals(t = {}) {
     durationMin: t.durationMin ?? 0,
     muscleVolume: t.muscleVolume ?? {},
   };
-}
-
-function localToday() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function shiftDays(iso, delta) {

@@ -137,10 +137,14 @@ export function LineChart({
   points,
   unit = '',
   height = 260,
+  zeroBased = false,
+  integerTicks = false,
 }: {
   points: Point[];
   unit?: string;
   height?: number;
+  zeroBased?: boolean;
+  integerTicks?: boolean;
 }) {
   const [hover, setHover] = useState<Hover | null>(null);
   const { ref, width: W } = useChartWidth();
@@ -152,7 +156,8 @@ export function LineChart({
 
   if (points.length === 0) return <p className="muted">No data yet.</p>;
 
-  const scale = niceScale(points.map((p) => p.value), false);
+  const scale = niceScale(points.map((p) => p.value), zeroBased);
+  if (integerTicks) scale.ticks = scale.ticks.filter(Number.isInteger);
   const span = scale.max - scale.min || 1;
   const x = (i: number) => pad.left + (points.length === 1 ? iw / 2 : (i / (points.length - 1)) * iw);
   const y = (v: number) => pad.top + ih - ((v - scale.min) / span) * ih;

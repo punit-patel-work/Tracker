@@ -10,6 +10,10 @@ export interface WeighIn {
 }
 
 export interface User {
+  username?: string | null;
+  role?: 'user' | 'admin';
+  isOwner?: boolean;
+  timeZone?: string;
   id: string;
   email: string;
   emailVerified: boolean;
@@ -48,6 +52,8 @@ export interface Exercise {
   bodyweightFactor: number;
   /** Held for time; sets carry `durationSec` instead of reps. */
   isTimed: boolean;
+  energyModel?: 'fixed' | 'walk-run' | 'cycling' | 'rowing';
+  archived?: boolean;
   isDistanceBased: boolean;
   isCustom: boolean;
 }
@@ -90,6 +96,7 @@ export interface Totals {
 }
 
 export interface Session {
+  revision?: number;
   id: string;
   date: string;
   name: string;
@@ -104,6 +111,8 @@ export interface Session {
 }
 
 export interface RoutineExercise {
+  targetDurationSec?: number | null;
+  targetCardioMin?: number | null;
   exerciseId: string;
   targetSets: number;
   targetReps: number;

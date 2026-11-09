@@ -341,5 +341,13 @@ h1 { font-size: 28px; line-height: 1.25; }
   .skeleton { animation: none; }
 }
 /* Visibility must follow component display rules. */
+.workout-edit-fields { border: 0; margin: 0; min-width: 0; }
+.calorie-breakdown { margin: 12px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.calorie-breakdown summary { cursor: pointer; padding: 14px 16px; font-size: 13px; font-weight: 600; }
+.calorie-content { padding: 0 16px 16px; font-size: 13px; line-height: 1.6; }
+.calorie-content p + p { margin-top: 12px; }
+.calorie-totals { margin: 14px 0; }
+.calorie-totals > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.calorie-totals dd { margin: 0; font-weight: 600; white-space: nowrap; }
 @media (max-width: 899px) { .desktop-only { display: none; } }
 @media (min-width: 900px) { .mobile-only { display: none; } }

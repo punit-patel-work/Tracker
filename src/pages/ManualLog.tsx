@@ -1,33 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useModal } from '../components/useModal';
 import { useApp } from '../state/app';
 import { api } from '../lib/api';
 import { distanceLabel, fromKg, fromKm, shiftDays, toKg, toKm, todayISO, weightLabel } from '../lib/format';
 import ExercisePicker from '../components/ExercisePicker';
 import * as I from '../components/Icon';
-import type { Entry, Exercise } from '../lib/types';
+import type { Entry, Exercise, Intensity, Session } from '../lib/types';
 
 /**
  * Backfill a workout you forgot to log. Writes straight to history without
  * touching the active-session slot, so this works mid-workout too.
  */
-export default function ManualLog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export default function ManualLog({ session, onClose, onSaved }: {
+  session?: Session; onClose: () => void; onSaved: (session: Session) => void;
+}) {
   const { user, byId } = useApp();
-  const [date, setDate] = useState(shiftDays(todayISO(), -1));
-  const [name, setName] = useState('');
-  const [durationMin, setDurationMin] = useState('45');
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const [date, setDate] = useState(session?.date ?? shiftDays(todayISO(), -1));
+  const [name, setName] = useState(session?.name ?? '');
+  const [durationMin, setDurationMin] = useState(String(session?.totals.durationMin ?? 45));
+  const [entries, setEntries] = useState<Entry[]>(() => structuredClone(session?.entries ?? []));
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const units = user?.units ?? 'metric';
   const unit = weightLabel(units);
+  const initial = useRef(JSON.stringify({ date, name, durationMin, entries }));
+  const changed = initial.current !== JSON.stringify({ date, name, durationMin, entries });
+  const close = () => {
+    if (busy || picking) return;
+    if (!changed || window.confirm('Discard your unsaved workout changes?')) onClose();
+  };
+  const sheet = useModal(close);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    const warn = (e: BeforeUnloadEvent) => { if (changed) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [changed]);
 
   const patchSet = (exerciseId: string, i: number, patch: Partial<Entry['sets'][number]>) =>
     setEntries((list) =>
@@ -51,18 +61,26 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
     setBusy(true);
     setError('');
     try {
+      const minutes = Number(durationMin);
+      if (!date || date > todayISO()) throw new Error('Choose a date on or before today');
+      if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 600) {
+        throw new Error('Duration must be greater than 0 and at most 600 minutes');
+      }
+      if (session && !name.trim()) throw new Error('Enter a workout name');
       // Drop rows left blank rather than writing empty sets into history.
       const cleaned = entries
         .map((e) => ({
           ...e,
-          sets: e.sets.filter((s) => (s.reps ?? 0) > 0 || (s.durationSec ?? 0) > 0),
+          sets: e.sets.filter((s) => (s.reps ?? 0) > 0 || (s.durationSec ?? 0) > 0 ||
+            (session && (s.done || s.weightKg != null))),
         }))
-        .filter((e) => e.sets.length > 0 || e.cardio?.durationMin);
+        .filter((e) => e.sets.length > 0 || e.cardio?.durationMin || (session && e.cardio?.done));
 
       if (!cleaned.length) throw new Error('Fill in at least one set');
 
-      await api.logManual({ date, name: name.trim(), durationMin: Number(durationMin) || 45, entries: cleaned });
-      onSaved();
+      const body = { revision: session?.revision ?? 0, date, name: name.trim(), durationMin: minutes, entries: cleaned };
+      const result = session ? await api.editCompletedSession(session.id, body) : await api.logManual(body);
+      onSaved(result.session);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save that workout');
       setBusy(false);
@@ -70,17 +88,17 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
   };
 
   return (
-    <div className="sheet-backdrop" onClick={onClose} role="presentation">
-      <div className="sheet tall" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Log a past workout">
+    <div className="sheet-backdrop" onClick={close} role="presentation">
+      <div ref={sheet} className="sheet tall" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={session ? 'Edit workout' : 'Log a past workout'}>
         <div className="sheet-grip" aria-hidden />
         <div className="sheet-head">
-          <h3>Log a past workout</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <h3>{session ? 'Edit workout' : 'Log a past workout'}</h3>
+          <button className="icon-btn" onClick={close} disabled={busy} aria-label="Close">
             <I.X size={19} />
           </button>
         </div>
 
-        <div className="sheet-body">
+        <fieldset className="sheet-body workout-edit-fields" disabled={busy}>
           <div className="form-grid">
             <div className="field">
               <label htmlFor="ml-date">Date</label>
@@ -104,7 +122,7 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
               />
             </div>
             <div className="field full">
-              <label htmlFor="ml-name">Name (optional)</label>
+              <label htmlFor="ml-name">{session ? 'Workout name' : 'Name (optional)'}</label>
               <input
                 id="ml-name"
                 className="input"
@@ -116,7 +134,9 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
           </div>
 
           <p className="hint" style={{ marginBottom: 12 }}>
-            Body weight is taken from your closest weigh-in on or before this date.
+            {session
+              ? `Keeps the recorded body weight of ${Math.round(fromKg(session.bodyWeightKg, units) * 10) / 10} ${unit}. Saving recalculates calories and progress. Changing total duration alone does not change calories.`
+              : 'Body weight is taken from your closest weigh-in on or before this date.'}
           </p>
 
           {entries.map((entry) => {
@@ -139,6 +159,16 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
 
                 {ex.type === 'cardio' ? (
                   <div className="cardio-fields">
+                    <div className="field">
+                      <label htmlFor={`intensity-${entry.exerciseId}`}>Intensity</label>
+                      <select id={`intensity-${entry.exerciseId}`} className="input" value={entry.cardio?.intensity ?? 'moderate'}
+                        onChange={(event) => setEntries((list) => list.map((item) => item.exerciseId === entry.exerciseId
+                          ? { ...item, cardio: { durationMin: null, distanceKm: null, ...item.cardio,
+                            intensity: event.target.value as Intensity, done: true } } : item))}>
+                        <option value="light">Light</option><option value="moderate">Moderate</option>
+                        <option value="vigorous">Vigorous</option><option value="max">Maximum</option>
+                      </select>
+                    </div>
                     <div className="field">
                       <label>Minutes</label>
                       <input
@@ -174,8 +204,8 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
                           className="input"
                           inputMode="decimal"
                           placeholder="1.25"
-                          defaultValue={entry.cardio?.distanceKm == null ? '' : String(fromKm(entry.cardio.distanceKm, units))}
-                          onBlur={(e) =>
+                          value={entry.cardio?.distanceKm == null ? '' : Math.round(fromKm(entry.cardio.distanceKm, units) * 10000) / 10000}
+                          onChange={(e) =>
                             setEntries((l) =>
                               l.map((x) => {
                                 if (x.exerciseId !== entry.exerciseId) return x;
@@ -258,7 +288,10 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
                   <>
                     {entry.sets.map((set, i) => (
                       <div className="manual-set" key={i}>
-                        <span className="set-no">{i + 1}</span>
+                        <button className="set-no" title="Toggle warm-up set" aria-label={`Set ${i + 1} warm-up`}
+                          aria-pressed={!!set.isWarmup} onClick={() => patchSet(entry.exerciseId, i, { isWarmup: !set.isWarmup })}>
+                          {set.isWarmup ? 'W' : i + 1}
+                        </button>
                         {ex.isTimed ? (
                           <input
                             className="mini-input"
@@ -354,14 +387,14 @@ export default function ManualLog({ onClose, onSaved }: { onClose: () => void; o
           </button>
 
           {error && <p className="form-error" style={{ marginTop: 12 }}>{error}</p>}
-        </div>
+        </fieldset>
 
         <div className="sheet-foot">
-          <button className="btn btn-ghost wide" onClick={onClose}>
+          <button className="btn btn-ghost wide" onClick={close} disabled={busy}>
             Cancel
           </button>
           <button className="btn btn-primary wide" onClick={save} disabled={busy || !entries.length}>
-            {busy ? 'Saving…' : 'Save workout'}
+            {busy ? 'Saving…' : session ? 'Save changes' : 'Save workout'}
           </button>
         </div>
       </div>

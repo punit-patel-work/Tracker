@@ -6,7 +6,7 @@
  * re-run deliberately instead of silently rewriting a user's history.
  */
 
-export const CALC_VERSION = 1;
+export const CALC_VERSION = 3;
 
 const SECONDS_PER_REP = 3; // controlled tempo, concentric + eccentric
 const MET_REST = 1.5; // standing between working sets
@@ -52,7 +52,9 @@ export function effectiveLoadKg(exercise, set, bodyWeightKg) {
 }
 
 export function isWorkingSet(set) {
-  if (!set || set.isWarmup) return false;
+  // Active rows always carry done: false until checked off. Older history and
+  // previous-performance snapshots can omit done, so retain their value fallback.
+  if (!set || set.isWarmup || set.done === false) return false;
   return (set.reps ?? 0) > 0 || (set.durationSec ?? 0) > 0 || (set.weightKg ?? 0) > 0 || !!set.done;
 }
 
@@ -82,7 +84,7 @@ export function bestE1rm(sets, exercise, bodyWeightKg) {
 /**
  * Strength burn charges work time at the exercise MET and rest time at 1.5.
  * A single MET across wall-clock time overstates it by ~40-60% at normal rest.
- * Warmups count for energy (you did move) but never for volume or PRs.
+ * Unchecked sets and warmups are excluded from this estimate.
  */
 export function strengthKcal(exercise, sets, bodyWeightKg) {
   const done = (sets ?? []).filter((x) => isWorkingSet(x));
@@ -95,8 +97,8 @@ export function strengthKcal(exercise, sets, bodyWeightKg) {
 }
 
 /** Compendium-style speed bands — MET is strongly non-linear in speed. */
-function speedMet(slug, kph) {
-  if (slug === 'treadmill' || slug === 'outdoor-run') {
+function speedMet(model, kph) {
+  if (model === 'walk-run') {
     if (kph < 5) return 3.5;
     if (kph < 6.5) return 5;
     if (kph < 8) return 8.3;
@@ -105,14 +107,14 @@ function speedMet(slug, kph) {
     if (kph < 12.9) return 11.8;
     return 14.5;
   }
-  if (slug === 'bike') {
+  if (model === 'cycling') {
     if (kph < 16) return 4;
     if (kph < 19) return 6.8;
     if (kph < 22.5) return 8;
     if (kph < 25.7) return 10;
     return 12;
   }
-  if (slug === 'rower') {
+  if (model === 'rowing') {
     if (kph < 8) return 4.8;
     if (kph < 11) return 7;
     if (kph < 13) return 8.5;
@@ -123,11 +125,11 @@ function speedMet(slug, kph) {
 
 export function cardioKcal(exercise, cardio, bodyWeightKg) {
   const minutes = cardio?.durationMin ?? 0;
-  if (!cardio || !(minutes > 0 || (cardio.distanceKm ?? 0) > 0 || cardio.done)) return 0;
+  if (!cardio || cardio.done === false || !(minutes > 0)) return 0;
   let met = (exercise.met ?? 5) * (INTENSITY_FACTOR[cardio.intensity] ?? 1);
   // A logged distance beats the subjective label: derive the real speed.
   if (exercise.isDistanceBased && cardio.distanceKm > 0 && minutes > 0) {
-    met = speedMet(exercise.slug, cardio.distanceKm / (minutes / 60)) ?? met;
+    met = speedMet(exercise.energyModel ?? ({ treadmill: 'walk-run', 'outdoor-run': 'walk-run', bike: 'cycling', rower: 'rowing' }[exercise.slug]), cardio.distanceKm / (minutes / 60)) ?? met;
   }
   return metKcal(met, bodyWeightKg, minutes);
 }
@@ -149,7 +151,7 @@ export function sessionTotals(session, byId) {
     if (!ex) continue;
     if (ex.type === 'cardio') {
       cardio += cardioKcal(ex, entry.cardio, session.bodyWeightKg);
-      if (entry.cardio && (entry.cardio.done || (entry.cardio.durationMin ?? 0) > 0)) {
+      if (entry.cardio && entry.cardio.done !== false && (entry.cardio.durationMin ?? 0) > 0) {
         cardioMinutes += entry.cardio.durationMin ?? 0;
       }
     } else {
@@ -316,17 +318,17 @@ export function weekKey(iso) {
 }
 
 /** Consecutive-week streak: weeks with at least one session, counting back. */
-export function weekStreak(dates) {
+export function weekStreak(dates, today = null) {
   if (!dates.length) return 0;
   const weeks = new Set(dates.map(weekKey));
-  const cursor = new Date();
+  const cursor = today ? new Date(`${today}T12:00:00`) : new Date();
   cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7));
   let streak = 0;
   for (;;) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
     if (weeks.has(key)) streak += 1;
     else if (streak > 0 || weeks.size === 0) break;
-    else if (streak === 0 && cursor < new Date(Date.now() - 7 * 86400000)) break;
+    else if (streak === 0 && cursor < new Date((today ? new Date(`${today}T12:00:00`).getTime() : Date.now()) - 7 * 86400000)) break;
     cursor.setDate(cursor.getDate() - 7);
     if (streak > 520) break;
   }

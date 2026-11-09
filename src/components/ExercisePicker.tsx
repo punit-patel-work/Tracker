@@ -57,6 +57,7 @@ export default function ExercisePicker({
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = exercises.filter((e) => {
+      if (e.archived) return false;
       if (category !== 'all' && e.category !== category) return false;
       if (!q) return true;
       return (

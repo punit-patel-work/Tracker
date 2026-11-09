@@ -6,8 +6,13 @@
  */
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:4000';
 let cookie = '';
+const revisions = new Map();
 
 async function call(method, path, body) {
+  const sessionId = path.match(/^\/api\/sessions\/([^/]+)(?:\/finish)?$/)?.[1];
+  if (sessionId && revisions.has(sessionId) && (method === 'PATCH' || path.endsWith('/finish'))) {
+    body = { ...body, revision: revisions.get(sessionId) };
+  }
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
@@ -23,6 +28,7 @@ async function call(method, path, body) {
     process.exit(1);
   }
   if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${JSON.stringify(json)}`);
+  if (json.session) revisions.set(json.session.id, json.session.revision);
   return json;
 }
 
@@ -69,10 +75,11 @@ await call('PATCH', '/api/me', { sex: 'male', birthYear: 1999, heightCm: 175, we
 const me = await call('GET', '/api/auth/me');
 ok('onboarding completes', !!me.user.onboardedAt, `weight=${me.user.currentWeightKg}kg`);
 
-const { exercises } = await call('GET', '/api/exercises');
+const { exercises: catalog } = await call('GET', '/api/exercises');
+const exercises = catalog.filter((exercise) => !exercise.archived);
 ok('catalog seeded', exercises.length >= 60, `${exercises.length} exercises`);
-const bench = exercises.find((e) => e.slug === 'bench-press');
-const rower = exercises.find((e) => e.slug === 'rower');
+const bench = exercises.find((e) => e.slug === 'barbell-flat-bench-press');
+const rower = exercises.find((e) => e.slug === 'rowing-machine-ergometer');
 
 const machines = exercises.filter((e) => e.equipment.includes('Machine'));
 ok('machine library is present', machines.length >= 25, `${machines.length} machine exercises`);
@@ -80,9 +87,9 @@ ok('every exercise has a how-to link',
   exercises.every((e) => e.howToUrl?.startsWith('https://')),
   exercises[0]?.howToUrl.slice(0, 52) + '…');
 
-const pushdown = exercises.find((e) => e.slug === 'rope-pushdown');
+const pushdown = exercises.find((e) => e.slug === 'rope-triceps-pushdown');
 ok('muscles are split primary vs secondary',
-  pushdown?.primaryMuscles.join() === 'Triceps Brachii' && pushdown?.secondaryMuscles.join() === 'Forearms');
+  pushdown?.primaryMuscles.includes('Triceps Brachii') && pushdown?.secondaryMuscles.includes('Forearms (Grip)'));
 
 const noDupes = new Set(exercises.map((e) => e.name)).size === exercises.length;
 ok('no duplicate exercise names', noDupes);
@@ -148,9 +155,9 @@ ok('empty workout is discarded', f3.discarded === true);
 
 /* ------------------------------- bodyweight, timed sets, auth hardening */
 
-const pullups = exercises.find((e) => e.slug === 'pull-ups');
-const plank = exercises.find((e) => e.slug === 'plank');
-ok('catalog flags bodyweight lifts', pullups?.isBodyweight === true && pullups?.bodyweightFactor === 1);
+const pullups = exercises.find((e) => e.slug === 'pull-up-overhand-grip');
+const plank = exercises.find((e) => e.slug === 'forearm-plank');
+ok('catalog flags bodyweight lifts', pullups?.isBodyweight === true && pullups?.bodyweightFactor > 0);
 ok('catalog flags timed holds', plank?.isTimed === true);
 
 const s4 = await call('POST', '/api/sessions', {});
@@ -165,7 +172,7 @@ const saved4 = await call('PATCH', `/api/sessions/${s4.session.id}`, {
   ],
 });
 // 8 × 108 + 6 × 118 = 864 + 708 = 1572; the plank adds no rep-volume
-ok('bodyweight lifts count body weight as load', Math.round(saved4.session.totals.volumeKg) === 1572,
+ok('bodyweight lifts count the catalog bodyweight factor', Math.round(saved4.session.totals.volumeKg) === Math.round(14 * 108 * pullups.bodyweightFactor + 60),
   `${Math.round(saved4.session.totals.volumeKg)} kg`);
 ok('timed holds add no rep-volume but do burn', saved4.session.totals.strengthKcal > 0);
 
@@ -178,7 +185,7 @@ ok('previous carries hold duration', prev4.previous[plank.id]?.sets[0].durationS
 
 const stats4 = await call('GET', '/api/stats/overview');
 const pullPr = stats4.prs.find((p) => p.exerciseId === pullups.id);
-ok('bodyweight PR uses total load', pullPr && pullPr.bestWeightKg >= 118,
+ok('bodyweight PR uses total load', pullPr && pullPr.bestWeightKg >= Math.round((108 * pullups.bodyweightFactor + 10) * 10) / 10,
   pullPr ? `${pullPr.bestWeightKg.toFixed(1)} kg` : 'missing');
 ok('timed exercise stays out of 1RM tracking', !stats4.trackable.some((t) => t.id === plank.id));
 
@@ -268,12 +275,12 @@ ok('CSV export is one row per set',
   `${csvText.split('\r\n').length - 1} rows`);
 
 const json = await call('GET', '/api/me/export');
-ok('JSON export names exercises', json.sessions.some((s) => s.entries.some((e) => e.exercise === 'Barbell Bench Press')));
+ok('JSON export names exercises', json.sessions.some((s) => s.entries.some((e) => e.exercise === bench.name)));
 
 /* -------------------------------------------- progress metrics (no tonnage) */
 
 const prog = await call('GET', '/api/stats/overview?weeks=12');
-const benchLift = prog.lifts.find((l) => l.name === 'Barbell Bench Press');
+const benchLift = prog.lifts.find((l) => l.name === bench.name);
 ok('per-lift strength change is reported', benchLift && benchLift.deltaKg !== undefined,
   benchLift ? `${benchLift.firstE1rm} -> ${benchLift.lastE1rm} kg (${benchLift.deltaPct}%)` : 'missing');
 ok('lifts carry a sparkline series', (benchLift?.points.length ?? 0) >= 2);

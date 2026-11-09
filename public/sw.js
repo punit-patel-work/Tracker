@@ -4,18 +4,30 @@
  * Deliberately conservative — /api is never cached. A stale set count or a
  * cached workout would be worse than an error message.
  */
-const CACHE = 'gym-tracker-v3';
+const CACHE = 'gym-tracker-v4';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await cache.addAll(SHELL);
+    // The first visit loads JS/CSS before this worker controls the page. Cache
+    // those fingerprinted files now so the very next launch can be offline.
+    const shell = await cache.match('/');
+    const html = await shell.text();
+    const assets = [...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)]
+      .map((match) => new URL(match[1], self.location.origin))
+      .filter((url) => url.origin === self.location.origin && url.pathname.startsWith('/assets/'));
+    await cache.addAll([...new Set(assets.map((url) => url.href))]);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('gym-tracker-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -33,8 +45,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
+          if (!res.ok) return caches.match('/').then((cached) => cached ?? res);
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('/', copy));
+          event.waitUntil(caches.open(CACHE).then((c) => c.put('/', copy)));
           return res;
         })
         .catch(() => caches.match('/').then((r) => r ?? Response.error())),
@@ -47,10 +60,13 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then((cached) => {
       const network = fetch(request)
         .then((res) => {
-          if (res.ok) caches.open(CACHE).then((c) => c.put(request, res.clone()));
+          if (res.ok) {
+            const copy = res.clone();
+            event.waitUntil(caches.open(CACHE).then((c) => c.put(request, copy)));
+          }
           return res;
         })
-        .catch(() => cached);
+        .catch(() => cached ?? Response.error());
       return cached ?? network;
     }),
   );

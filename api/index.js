@@ -9,6 +9,8 @@ import exerciseRoutes from '../server/routes/exercises.routes.js';
 import routineRoutes from '../server/routes/routines.routes.js';
 import sessionRoutes from '../server/routes/sessions.routes.js';
 import statsRoutes from '../server/routes/stats.routes.js';
+import aiRoutes from '../server/routes/ai.routes.js';
+import adminRoutes from '../server/routes/admin.routes.js';
 
 const app = express();
 
@@ -28,10 +30,13 @@ app.use('/api/exercises', exerciseRoutes);
 app.use('/api/routines', routineRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error('[api]', err);
-  const status = err.status ?? 500;
+  const status = err.status ?? (err.name === 'VersionError' ? 409 : ['ValidationError', 'CastError'].includes(err.name) ? 400 : 500);
+  if (err.name === 'VersionError') return res.status(409).json({ error: 'This workout changed on another device. Review the latest version before saving.' });
   res.status(status).json({ error: status === 500 ? 'Something went wrong on the server' : err.message });
 });
 

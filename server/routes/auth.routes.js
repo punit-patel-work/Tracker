@@ -5,6 +5,7 @@ import { User, Exercise, Routine } from '../models.js';
 import { STARTER_ROUTINES } from '../../shared/catalog.js';
 import { clearToken, issueToken, requireAuth } from '../auth.js';
 import { clearLimit, ipEmailKey, rateLimit } from '../rateLimit.js';
+import { text, timeZone } from '../validation.js';
 import { mailReady, sendPasswordReset, sendVerification } from '../mailer.js';
 
 const router = Router();
@@ -43,7 +44,7 @@ async function issueVerification(user, req) {
       console.error(`[auth] verification email failed: ${String(err.message).slice(0, 200)}`);
     }
   }
-  if (!sent) console.log(`\n[auth] verify ${user.email}\n[auth] ${link}\n`);
+  if (!sent && process.env.NODE_ENV !== 'production') console.log(`\n[auth] verify ${user.email}\n[auth] ${link}\n`);
   return { link: process.env.NODE_ENV !== 'production' ? link : null, sent };
 }
 
@@ -66,6 +67,7 @@ async function createStarterRoutines(userId) {
 
 router.post('/signup', signupLimit, async (req, res) => {
   const { name, email, password } = req.body ?? {};
+  text(name, 'Name'); text(email, 'Email', 254); text(password, 'Password', 72);
   if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
   if (!EMAIL_RE.test(email ?? '')) return res.status(400).json({ error: 'Enter a valid email address' });
   if ((password ?? '').length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -74,6 +76,7 @@ router.post('/signup', signupLimit, async (req, res) => {
   if (existing) return res.status(409).json({ error: 'An account with that email already exists' });
 
   const user = await User.create({
+    timeZone: timeZone(req.get('X-Time-Zone') || 'UTC'),
     name: name.trim(),
     email: email.toLowerCase().trim(),
     passwordHash: await bcrypt.hash(password, 12),
@@ -81,7 +84,7 @@ router.post('/signup', signupLimit, async (req, res) => {
 
   await createStarterRoutines(user._id);
   const verify = await issueVerification(user, req);
-  issueToken(res, user._id);
+  issueToken(res, user);
   // Signing in immediately: verification protects account *recovery*, not access.
   // Blocking someone from logging their workout until they check email is hostile.
   res.status(201).json({ user: user.toPublic(), verifyLink: verify.link });
@@ -117,13 +120,20 @@ router.post('/resend-verification', requireAuth, resendLimit, async (req, res) =
 
 router.post('/login', loginLimit, async (req, res) => {
   const { email, password } = req.body ?? {};
-  const user = await User.findOne({ email: (email ?? '').toLowerCase().trim() });
+  text(email, 'Email', 254); text(password, 'Password', 72);
+  const identifier = email.toLowerCase().trim();
+  const user = await User.findOne(identifier.includes('@') ? { email: identifier } : { username: identifier });
   // Same message either way — never reveal which half was wrong.
   const ok = user && (await bcrypt.compare(password ?? '', user.passwordHash));
-  if (!ok) return res.status(401).json({ error: 'Email or password is incorrect' });
+  if (!ok) return res.status(401).json({ error: 'Email, username or password is incorrect' });
+  if (user.suspended) return res.status(403).json({ error: 'This account is suspended. Contact the administrator.' });
 
+  const zone = timeZone(req.get('X-Time-Zone') || user.timeZone || 'UTC');
+  user.timeZone = zone;
+  user.lastLoginAt = new Date();
+  await user.save();
   clearLimit(ipEmailKey(req));
-  issueToken(res, user._id);
+  issueToken(res, user);
   res.json({ user: user.toPublic() });
 });
 
@@ -163,7 +173,7 @@ router.post('/forgot', forgotLimit, async (req, res) => {
         console.error(`[auth] reset email failed: ${String(err.message).slice(0, 200)}`);
       }
     }
-    if (!sent) console.log(`\n[auth] password reset for ${email}\n[auth] ${link}\n`);
+    if (!sent && process.env.NODE_ENV !== 'production') console.log(`\n[auth] password reset for ${email}\n[auth] ${link}\n`);
 
     // Outside production the link comes back in the response too, so the flow
     // is testable and usable without waiting on an inbox. Never in production.
@@ -175,20 +185,20 @@ router.post('/forgot', forgotLimit, async (req, res) => {
 
 router.post('/reset', resetLimit, async (req, res) => {
   const { token, password } = req.body ?? {};
+  text(password, 'Password', 72);
   if ((password ?? '').length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
   if (!token) return res.status(400).json({ error: 'Reset link is missing its token' });
 
   const hash = crypto.createHash('sha256').update(String(token)).digest('hex');
-  const user = await User.findOne({ resetTokenHash: hash, resetTokenExpires: { $gt: new Date() } });
+  const user = await User.findOneAndUpdate(
+    { resetTokenHash: hash, resetTokenExpires: { $gt: new Date() } },
+    { $set: { passwordHash: await bcrypt.hash(password, 12), resetTokenHash: null, resetTokenExpires: null }, $inc: { sessionVersion: 1, __v: 1 } },
+    { returnDocument: 'after' },
+  );
   if (!user) return res.status(400).json({ error: 'That reset link is invalid or has expired. Request a new one.' });
 
-  user.passwordHash = await bcrypt.hash(password, 12);
-  user.resetTokenHash = null;
-  user.resetTokenExpires = null;
-  await user.save();
-
   // Sign them straight in — bouncing back to a login form here is pointless.
-  issueToken(res, user._id);
+  issueToken(res, user);
   res.json({ user: user.toPublic() });
 });
 

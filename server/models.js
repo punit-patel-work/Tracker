@@ -12,7 +12,14 @@ const WeighInSchema = new Schema(
 const UserSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
+    username: { type: String, lowercase: true, trim: true },
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    isOwner: { type: Boolean, default: false },
+    suspended: { type: Boolean, default: false },
+    lastLoginAt: { type: Date, default: null },
     passwordHash: { type: String, required: true },
+    sessionVersion: { type: Number, default: 0 },
+    timeZone: { type: String, default: 'UTC' },
     name: { type: String, required: true, trim: true },
 
     sex: { type: String, enum: ['male', 'female'], default: 'male' },
@@ -43,10 +50,12 @@ const UserSchema = new Schema(
     verifyTokenHash: { type: String, default: null },
     verifyTokenExpires: { type: Date, default: null },
   },
-  { timestamps: true },
+  { timestamps: true, optimisticConcurrency: true },
 );
 
 /** Weight as of a given day, falling back to the closest earlier entry. */
+UserSchema.index({ username: 1 }, { unique: true, partialFilterExpression: { username: { $type: 'string' } } });
+UserSchema.index({ createdAt: -1, _id: -1 });
 UserSchema.methods.weightOn = function weightOn(iso) {
   const sorted = [...this.weighIns].sort((a, b) => a.date.localeCompare(b.date));
   let match = null;
@@ -58,7 +67,11 @@ UserSchema.methods.toPublic = function toPublic() {
   return {
     id: this._id,
     email: this.email,
+    username: this.username ?? null,
+    role: this.role ?? 'user',
+    isOwner: !!this.isOwner,
     emailVerified: this.emailVerified,
+    timeZone: this.timeZone ?? 'UTC',
     name: this.name,
     sex: this.sex,
     birthYear: this.birthYear,
@@ -99,14 +112,17 @@ const ExerciseSchema = new Schema(
     /** Held for time rather than counted in reps. */
     isTimed: { type: Boolean, default: false },
     isDistanceBased: { type: Boolean, default: false },
+    energyModel: { type: String, enum: ['fixed', 'walk-run', 'cycling', 'rowing'], default: 'fixed' },
+    adminModified: { type: Boolean, default: false },
     /** null = shipped catalog, visible to everyone. */
     owner: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     archived: { type: Boolean, default: false },
   },
-  { timestamps: true },
+  { timestamps: true, optimisticConcurrency: true },
 );
 
 ExerciseSchema.index({ owner: 1, slug: 1 }, { unique: true });
+ExerciseSchema.index({ createdAt: -1, _id: -1 });
 
 /* ---------------------------------------------------------------- routine */
 
@@ -116,6 +132,8 @@ const RoutineExerciseSchema = new Schema(
     targetSets: { type: Number, default: 3 },
     targetReps: { type: Number, default: 8 },
     targetWeightKg: { type: Number, default: null },
+    targetDurationSec: { type: Number, default: null },
+    targetCardioMin: { type: Number, default: null },
     restSec: { type: Number, default: null },
   },
   { _id: false },
@@ -127,13 +145,16 @@ const RoutineSchema = new Schema(
     name: { type: String, required: true, trim: true },
     note: { type: String, default: '' },
     exercises: { type: [RoutineExerciseSchema], default: [] },
+    aiSource: { type: String },
     lastPerformedAt: { type: Date, default: null },
     archived: { type: Boolean, default: false },
   },
-  { timestamps: true },
+  { timestamps: true, optimisticConcurrency: true },
 );
 
 /* ---------------------------------------------------------------- session */
+RoutineSchema.index({ createdAt: -1, _id: -1 });
+RoutineSchema.index({ user: 1, aiSource: 1 }, { unique: true, partialFilterExpression: { aiSource: { $type: 'string' } } });
 
 const SetSchema = new Schema(
   {
@@ -188,11 +209,15 @@ const SessionSchema = new Schema(
     totals: { type: Object, default: {} },
     calcVersion: { type: Number, default: 1 },
   },
-  { timestamps: true },
+  { timestamps: true, optimisticConcurrency: true },
 );
 
 SessionSchema.index({ user: 1, date: -1 });
+SessionSchema.index({ status: 1, date: -1 });
+SessionSchema.index({ createdAt: -1, _id: -1 });
 SessionSchema.index({ user: 1, status: 1 });
+SessionSchema.index({ user: 1, status: 1, updatedAt: -1, _id: -1 });
+SessionSchema.index({ user: 1 }, { unique: true, partialFilterExpression: { status: 'active' }, name: 'one_active_workout_per_user' });
 /** Backs the "what did I lift last time?" lookup, run on every workout screen. */
 SessionSchema.index({ user: 1, 'entries.exercise': 1, date: -1 });
 
@@ -200,3 +225,13 @@ export const User = model('User', UserSchema);
 export const Exercise = model('Exercise', ExerciseSchema);
 export const Routine = model('Routine', RoutineSchema);
 export const Session = model('Session', SessionSchema);
+
+const AuditSchema = new Schema({
+  actor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  actorName: String,
+  action: { type: String, required: true },
+  target: String,
+  summary: String,
+}, { timestamps: true });
+AuditSchema.index({ createdAt: -1, _id: -1 });
+export const AdminAudit = model('AdminAudit', AuditSchema);

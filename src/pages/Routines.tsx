@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useApp } from '../state/app';
 import { useWorkout } from '../state/workout';
 import { api } from '../lib/api';
-import { relativeDay, todayISO } from '../lib/format';
+import { relativeDay, todayISO, fromKg, toKg, weightLabel } from '../lib/format';
 import ExercisePicker from '../components/ExercisePicker';
+import ExerciseAlternatives from '../components/ExerciseAlternatives';
 import * as I from '../components/Icon';
 import type { Routine, RoutineExercise } from '../lib/types';
 import TrainingArtwork, { trainingFocus, focusLabels } from '../components/TrainingArtwork';
@@ -56,6 +57,7 @@ export default function Routines({ go }: { go: (page: string) => void }) {
           <p className="page-sub">Find your focus. Pick your session. Make it count.</p>
         </div>
         <div className="page-head-actions">
+          <button className="btn btn-ghost" onClick={() => go('ai')}>Build with AI</button>
           <button className="btn btn-primary" onClick={() => setEditing('new')}>
             <I.Plus size={16} /> New routine
           </button>
@@ -98,7 +100,7 @@ export default function Routines({ go }: { go: (page: string) => void }) {
                   <li key={re.exerciseId}>
                     <span>{ex?.name ?? 'Removed exercise'}</span>
                     <span className="muted">
-                      {ex?.type === 'cardio' ? 'timed' : `${re.targetSets} × ${re.targetReps}`}
+                      {ex?.type === 'cardio' ? `${re.targetCardioMin ?? '—'} min` : ex?.isTimed ? `${re.targetSets} × ${re.targetDurationSec ?? '—'} sec` : `${re.targetSets} × ${re.targetReps}`}
                     </span>
                   </li>
                 );
@@ -131,11 +133,13 @@ function RoutineEditor({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const { byId } = useApp();
+  const { byId, user } = useApp();
+  const units = user?.units ?? 'metric';
   const [name, setName] = useState(routine?.name ?? '');
   const [note, setNote] = useState(routine?.note ?? '');
   const [list, setList] = useState<RoutineExercise[]>(routine?.exercises ?? []);
   const [picking, setPicking] = useState(false);
+  const [alternative, setAlternative] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -250,18 +254,25 @@ function RoutineEditor({
                       />
                     </label>
                     <label>
-                      <span>Reps</span>
+                      <span>{ex?.isTimed ? 'Hold (sec)' : 'Reps'}</span>
                       <input
                         className="mini-input"
                         inputMode="numeric"
-                        value={re.targetReps}
-                        onChange={(e) => patch(re.exerciseId, { targetReps: Number(e.target.value) || 0 })}
+                        value={(ex?.isTimed ? re.targetDurationSec : re.targetReps) ?? ''}
+                        onChange={(e) => patch(re.exerciseId, ex?.isTimed ? { targetDurationSec: Number(e.target.value) || null, targetReps: 0 } : { targetReps: Number(e.target.value) || 0 })}
                       />
                     </label>
                   </div>
                 )}
 
+                <div className="routine-edit-targets">
+                  {cardio ? <label><span>Minutes</span><input className="mini-input" type="number" min={1} max={90} value={re.targetCardioMin ?? ''} onChange={e => patch(re.exerciseId, {targetCardioMin: e.target.value ? Number(e.target.value) : null})}/></label> : <>
+                    <label><span>{weightLabel(units)}</span><input className="mini-input" type="number" min={0} step="any" value={re.targetWeightKg == null ? '' : Number(fromKg(re.targetWeightKg,units).toFixed(1))} onChange={e => patch(re.exerciseId, {targetWeightKg: e.target.value ? toKg(Number(e.target.value),units) : null})}/></label>
+                    <label><span>Rest (sec)</span><input className="mini-input" type="number" min={0} max={600} value={re.restSec ?? ''} onChange={e => patch(re.exerciseId, {restSec: e.target.value ? Number(e.target.value) : null})}/></label>
+                  </>}
+                </div>
                 <div className="routine-edit-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setAlternative(re.exerciseId)}>Alternatives</button>
                   <button className="icon-btn sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">
                     ↑
                   </button>
@@ -303,6 +314,7 @@ function RoutineEditor({
         </button>
       </div>
 
+      {alternative && <ExerciseAlternatives sourceId={alternative} exclude={list.map(x => x.exerciseId)} onClose={() => setAlternative(null)} onPick={ex => setList(old => old.map(e => e.exerciseId === alternative ? {...e, exerciseId: ex.id, targetWeightKg: null, targetSets: ex.type === 'cardio' ? 1 : e.targetSets, targetReps: ex.type === 'cardio' || ex.isTimed ? 0 : e.targetReps || 8, targetDurationSec: ex.isTimed ? e.targetDurationSec ?? 30 : null, targetCardioMin: ex.type === 'cardio' ? e.targetCardioMin ?? 10 : null} : e))} />}
       {picking && (
         <ExercisePicker
           multi

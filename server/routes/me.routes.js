@@ -1,19 +1,30 @@
 import { Router } from 'express';
+import { AiDraft, AiPreferences, AiUsage, AiLock } from '../ai/models.js';
 import bcrypt from 'bcryptjs';
 import { Exercise, Routine, Session, User } from '../models.js';
+import { text, number, dateISO, todayFor, timeZone, array, id } from '../validation.js';
 import { requireAuth } from '../auth.js';
 
 const router = Router();
 router.use(requireAuth);
 
-const EDITABLE = ['name', 'sex', 'birthYear', 'heightCm', 'units', 'goal', 'weeklyTarget', 'keepAwake'];
+const EDITABLE = ['name', 'sex', 'birthYear', 'heightCm', 'units', 'goal', 'weeklyTarget', 'keepAwake', 'timeZone'];
 
 router.patch('/', async (req, res) => {
   const user = req.user;
+  if (req.body.name !== undefined) text(req.body.name, 'Name');
+  if (req.body.heightCm != null) number(req.body.heightCm, 'Height', 30, 300);
+  if (req.body.birthYear != null) number(req.body.birthYear, 'Birth year', 1900, Number(todayFor(req.timeZone).slice(0, 4)), true);
+  if (req.body.weeklyTarget !== undefined) number(req.body.weeklyTarget, 'Weekly target', 1, 14, true);
+  if (req.body.timeZone !== undefined) timeZone(req.body.timeZone);
+  if (req.body.favorites) {
+    if (typeof req.body.favorites !== 'object' || Array.isArray(req.body.favorites) || Object.keys(req.body.favorites).length > 50) return res.status(400).json({ error: 'Invalid favorites' });
+    for (const [category, ids] of Object.entries(req.body.favorites)) { text(category, 'Category', 80); array(ids, 'Favorites').forEach(id); }
+  }
   for (const key of EDITABLE) if (req.body[key] !== undefined) user[key] = req.body[key];
 
   // A weight sent with a profile edit is a weigh-in for today, not a field overwrite.
-  if (req.body.weightKg > 0) upsertWeighIn(user, req.body.weightKg, req.body.date);
+  if (req.body.weightKg !== undefined) upsertWeighIn(user, number(req.body.weightKg, 'Body weight', 1, 700), dateISO(req.body.date ?? todayFor(req.timeZone), todayFor(req.timeZone)));
 
   if (req.body.favorites) user.favorites = req.body.favorites;
 
@@ -26,9 +37,9 @@ router.patch('/', async (req, res) => {
 });
 
 router.post('/weight', async (req, res) => {
-  const kg = Number(req.body?.kg);
+  const kg = number(req.body?.kg, 'Body weight', 1, 700);
   if (!(kg > 0)) return res.status(400).json({ error: 'Enter a weight above zero' });
-  upsertWeighIn(req.user, kg, req.body?.date);
+  upsertWeighIn(req.user, kg, dateISO(req.body?.date ?? todayFor(req.timeZone), todayFor(req.timeZone)));
   await req.user.save();
   res.json({ user: req.user.toPublic() });
 });
@@ -49,8 +60,10 @@ router.get('/export', async (req, res) => {
   const exIds = [...new Set(sessions.flatMap((s) => (s.entries ?? []).map((e) => String(e.exercise))))];
   const names = new Map((await Exercise.find({ _id: { $in: exIds } }).select('name slug').lean()).map((e) => [String(e._id), e]));
 
-  res.setHeader('Content-Disposition', `attachment; filename="gym-tracker-${localToday()}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="gym-tracker-${todayFor(req.timeZone)}.json"`);
   res.json({
+    aiPreferences: (await AiPreferences.findOne({ user: req.user._id }).lean())?.preferences ?? null,
+    aiSuggestions: await AiDraft.find({ user: req.user._id }).select('task result createdAt').lean(),
     exportedAt: new Date().toISOString(),
     profile: req.user.toPublic(),
     customExercises: custom,
@@ -98,21 +111,27 @@ router.get('/export.csv', async (req, res) => {
   }
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="gym-tracker-${localToday()}.csv"`);
+  res.setHeader('Content-Disposition', `attachment; filename="gym-tracker-${todayFor(req.timeZone)}.csv"`);
   res.send(rows.map((r) => r.map(csvCell).join(',')).join('\r\n'));
 });
 
 function csvCell(v) {
-  const s = String(v ?? '');
+  const raw = String(v ?? '');
+  const s = /^[=+@\-\t\r]/.test(raw) ? `'${raw}` : raw;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** Destructive and irreversible — everything the account owns goes with it. */
 router.post('/delete-account', async (req, res) => {
+  if (req.user.isOwner) return res.status(400).json({ error: 'The owner administrator account cannot be deleted from Profile.' });
   const ok = await bcrypt.compare(req.body?.password ?? '', req.user.passwordHash);
   if (!ok) return res.status(403).json({ error: 'Password is incorrect' });
 
   await Promise.all([
+    AiDraft.deleteMany({ user: req.user._id }),
+    AiPreferences.deleteMany({ user: req.user._id }),
+    AiUsage.deleteMany({ user: req.user._id }),
+    AiLock.deleteOne({ _id: String(req.user._id) }),
     Session.deleteMany({ user: req.user._id }),
     Routine.deleteMany({ user: req.user._id }),
     Exercise.deleteMany({ owner: req.user._id }),
@@ -123,16 +142,11 @@ router.post('/delete-account', async (req, res) => {
 });
 
 function upsertWeighIn(user, kg, date) {
-  const iso = date ?? localToday();
+  const iso = date;
   const existing = user.weighIns.find((w) => w.date === iso);
   if (existing) existing.kg = kg;
   else user.weighIns.push({ date: iso, kg });
   user.weighIns.sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function localToday() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export default router;

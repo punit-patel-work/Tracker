@@ -4,12 +4,15 @@ Full-stack strength & cardio log. React + TypeScript on the front, Express + Mon
 on the back, one shared calculation engine so a number shown mid-set is the same number
 the database stores.
 
+Requires Node 22.13+ within the 22.x release line, or Node 24+. See [the reliability update](docs/reliability-update.md)
+for upgrade steps, API revision handling and verification limits.
+
 ```bash
-npm install
+npm ci
 cp .env.example .env         # fill in MONGODB_URI and JWT_SECRET
 npm run dev                  # API on :4000, web on :5173 (proxied, LAN-visible)
 npm run build && npm start   # production: API serves the built SPA on :4000
-node scripts/smoke.mjs       # 15-check end-to-end API test against a running server
+npm test                    # isolated unit, database and UI regression tests
 node scripts/make-icons.mjs  # regenerate the PNG app icons
 ```
 
@@ -34,6 +37,12 @@ Run `npm run test:progress` for the date-window and comparison regression tests.
 Deploy the updated stats API with the frontend for complete weekly history and
 daily session counts; older API responses show their available coverage explicitly.
 
+## Admin portal
+
+Open `/admin` and sign in with an administrator email or username. The portal includes
+charts, member access controls, completed-workout editing, routine and catalog management,
+CSV page exports, an audit log and system health. See [admin setup and capabilities](docs/admin-portal.md).
+
 ## Using it on your phone
 
 Both servers bind to the LAN, so with your phone on the same wifi:
@@ -43,8 +52,9 @@ Both servers bind to the LAN, so with your phone on the same wifi:
   — one origin, no proxy, and the service worker is active.
 
 Then **Add to Home Screen**. It installs as a standalone app: own icon, no browser chrome,
-and the shell is cached so it opens instantly and survives gym wifi. Workout data always
-goes to the network — a cached set count would be worse than an error.
+and the shell is cached for offline reopening. The last loaded account/catalog is cached
+for seven days, and each active workout has an account-scoped device backup. API responses
+are never service-worker cached. Finishing and accessing history require a connection.
 
 Note that `secure` cookies are off outside production, which is what makes plain-http LAN
 access work. Over the public internet, run behind HTTPS with `NODE_ENV=production`.
@@ -69,11 +79,12 @@ Everything else is arranged behind that.
 - **Works with no signal.** Every change is written to `localStorage` first and pushed to
   the server 800ms later. Lose reception mid-set and logging carries on; the queue flushes
   the moment you reconnect (on the `online` event, or a 15s retry). Reopening the app
-  prefers the device copy when it belongs to the running workout.
+  restores the device copy when its saved revision still matches. If another device changed
+  the session, a conflict notice lets you choose a copy or export the local changes.
 - **The screen stays awake** for the whole session, so you are not unlocking your phone
   between every set.
-- **The active workout lives on the server too.** A dead phone costs you nothing — sign in
-  anywhere and the workout is still running.
+- **The active workout lives on the server too.** Sign in on another device to resume
+  the last successfully synced version. Unsynced changes remain on the original device.
 - **Bodyweight lifts count your body.** A pull-up at 108kg logs 108kg per rep, not zero;
   the weight field means *added* weight, and the load is resolved at the body weight of
   that session.
@@ -92,8 +103,8 @@ Everything else is arranged behind that.
 - **Save any past session as a routine**, targets taken from the median reps you actually
   did rather than the last (often drop-off) set.
 - **Export** everything as CSV (one row per set) or JSON (with routines and custom lifts).
-- **Warm-ups are first-class.** Tap the set number to mark one. They count toward energy
-  expenditure (you did move) but never toward volume or PRs.
+- **Warm-ups are recorded.** Tap the set number to mark one. They remain in history,
+  but this model excludes them from calorie estimates, working volume and PRs.
 - **Mobile-first, and specifically phone-first.** Anything you touch mid-set is at least
   44px. Bottom tab bar on a phone, sidebar navigation on a desktop.
 
@@ -136,7 +147,7 @@ The details that actually decide whether it is usable in a gym:
 | **Home** | Streak, week-vs-target, start-a-routine, recent PRs, last workouts, weigh-in nudge |
 | **Workout** | Live logging — set grid, rest timer, plate math, PR flash, finish summary |
 | **Routines** | Build and edit training days with target sets × reps |
-| **History** | Every completed session, expandable to per-set detail with e1RM |
+| **History** | Paginated search, completed-session editing and per-set detail with e1RM |
 | **Progress** | e1RM / top-set / volume trend per lift, weekly volume, muscle balance, energy split, consistency grid, body-weight trend, PR table |
 | **Profile** | Dated weigh-ins, BMR, units, goal, weekly target, account deletion |
 
@@ -151,11 +162,15 @@ DELETE /api/me/weight/:date                     POST /api/me/delete-account
 GET    /api/exercises                           POST /api/exercises   PATCH /api/exercises/:id
 GET    /api/routines    POST /api/routines      PATCH/DELETE /api/routines/:id
 GET    /api/sessions/active                     POST /api/sessions
-GET    /api/sessions/previous?ids=a,b,c         GET  /api/sessions?limit=&skip=
+GET    /api/sessions/previous?ids=a,b,c         GET  /api/sessions?limit=&skip=&q=
 PATCH  /api/sessions/:id                        POST /api/sessions/:id/finish
+POST   /api/sessions/manual                    PATCH /api/sessions/:id/completed
 POST   /api/sessions/:id/beacon                 DELETE /api/sessions/:id
 GET    /api/stats/overview                      GET  /api/stats/exercise/:id
 ```
+
+Session mutations (autosave, finish, completed edit and the legacy beacon endpoint) require
+the latest `revision` returned by the API. Stale changes return 409.
 
 Aggregation happens on the server — the client receives series, never a full history dump.
 
@@ -163,7 +178,7 @@ Aggregation happens on the server — the client receives series, never a full h
 
 - **users** — credentials, body metrics, units, goal, `weighIns[]` (a *time series*, so a
   session keeps the weight it was performed at), favourites per category
-- **exercises** — the 71-item catalog seeded on boot (`owner: null`, shared) plus
+- **exercises** — the 530-item catalog synchronized when its revision changes (`owner: null`, shared) plus
   user-created ones; never hard-deleted, only archived. Muscles are split into
   `primaryMuscles` / `secondaryMuscles`, which is what makes hard-set attribution
   meaningful (1.0 per primary, 0.5 per secondary). Each carries a `howToUrl`
@@ -172,14 +187,16 @@ Aggregation happens on the server — the client receives series, never a full h
   cardio, cached `totals`, and a `calcVersion` so a formula change can be re-run
   deliberately instead of silently rewriting history
 
-Indexes on `sessions {user, date}`, `{user, status}`, and `exercises {owner, slug}`.
+Indexes include `sessions {user, date}`, `{user, status}`, `{user, status, updatedAt, _id}`
+and `exercises {owner, slug}`. A partial unique index enforces one active session per user.
 
 ## Calorie model — `shared/engine.js`
 
 `kcal = MET × 3.5 × bodyWeightKg / 200 × minutes`
 
+- **Planned entries contribute zero.** Only completed work contributes; warm-ups are excluded.
 - **Strength** splits work time from rest: `reps × 3s` at the exercise MET (5–6), rest
-  seconds at MET 1.5. One MET across wall-clock time overstates burn by roughly 40–60%.
+  seconds at MET 1.5. Rest is estimated per completed set, not measured by the workout timer.
 - **Cardio** scales the MET by effort, but when distance and duration are both logged it
   derives real speed and uses a Compendium-style band instead — MET is strongly non-linear
   in speed.
@@ -225,10 +242,10 @@ on :4000. Look at the `[api]` lines above them for the real reason.
 
 ## Performance
 
-- **`/api/stats/overview` no longer recomputes anything it already knows.** Totals are
-  cached on each session at write time, so the common path never reads the `entries`
-  array. Three narrow queries: cached totals for every session, full entries only for the
-  28-day muscle-balance window, and a sets-only projection for all-time PRs.
+- **`/api/stats/overview` has a bounded 60-second cache.** Each request checks the account
+  and completed-session database signature. A cache hit avoids repeated full-history reads;
+  a cold request still computes charts and personal records from history. Startup does not
+  recalculate saved workouts.
 - **Compound index `{user, 'entries.exercise', date}`** behind `/sessions/previous`, which
   runs on every workout screen.
 - **gzip** on all responses — the stylesheet goes 42.6 kB → 8.5 kB.
@@ -244,10 +261,9 @@ on :4000. Look at the `[api]` lines above them for the real reason.
 - **Password reset** issues a SHA-256-hashed, one-hour, single-use token. `/auth/forgot`
   always returns 200 so it cannot be used to discover which emails have accounts. Reset
   links are emailed over SMTP; outside production the link is also returned in the
-  response (and logged) so the flow works without an inbox. Never in production.
-- `.env` holds live credentials and is gitignored — **note that `.env.example` currently
-  contains a real `JWT_SECRET`**; that file is meant to be committed, so put a placeholder
-  back before pushing anywhere.
+  response (and logged) so the flow works without an inbox. Never in production. Resetting
+  the password also invalidates previously issued login cookies.
+- `.env` holds local credentials and is gitignored. `.env.example` contains placeholders only.
 - The JWT lives in an httpOnly, sameSite=lax cookie, so an XSS bug cannot lift the session.
   `secure` is set when `NODE_ENV=production`.
 - Every query is scoped by `user`; one account cannot read another's sessions, routines or
@@ -265,5 +281,10 @@ src/lib/         api client, types, formatting & unit conversion
 src/state/       app (auth + catalog), workout (active session + autosave), theme
 src/components/  Icon set, SVG charts, exercise picker sheet, rest timer, plate math
 src/pages/       Auth, Onboarding, Home, Workout, Routines, History, Progress, Profile
-scripts/smoke.mjs  15-check end-to-end API test
+scripts/*.test.mjs  isolated engine, API, database and worker regression tests
+tests/             React/jsdom interaction and account-isolation tests
 ```
+
+## AI training assistant
+
+Open `/ai` for goal-based routine drafts, workout explanations and weekly reviews. Exercise alternatives use maintained catalog lists without GPT calls. Admin controls and usage are at `/admin#ai`. Set `OPENAI_API_KEY` only in the server environment. See [Phase 1 documentation](docs/ai-phase1.md) for configuration, privacy, data flow and verification.

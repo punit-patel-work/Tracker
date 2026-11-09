@@ -65,7 +65,7 @@ export default function ProfilePage() {
           </p>
         </div>
         <div className="page-head-actions">
-          <button className="btn btn-ghost" onClick={() => void signOut()}>
+          <button className="btn btn-ghost" onClick={() => void signOut().catch((err) => toast.show(err instanceof Error ? err.message : 'Could not sign out'))}>
             <I.LogOut size={16} /> Sign out
           </button>
         </div>

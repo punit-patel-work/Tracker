@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { Exercise, Routine, Session } from '../models.js';
 import { requireAuth } from '../auth.js';
+import { entriesInput, accessibleExercises, text, dateISO, todayFor, number, id } from '../validation.js';
+import { completedWorkoutChanges } from '../session-edit.js';
 import { bestE1rm, CALC_VERSION, effectiveLoadKg, isWorkingSet, sessionTotals } from '../../shared/engine.js';
 
 const router = Router();
 router.use(requireAuth);
+router.param('id', (req, _res, next, value) => { try { id(value); next(); } catch (err) { next(err); } });
 
 const MAX_ACTIVE_WORKOUT_MS = 6 * 60 * 60 * 1000;
 
@@ -18,6 +21,7 @@ async function exerciseMap(ids) {
 function serialize(s) {
   return {
     id: String(s._id),
+    revision: s.__v ?? 0,
     date: s.date,
     name: s.name,
     routineId: s.routine ? String(s.routine) : null,
@@ -61,22 +65,14 @@ async function recompute(doc) {
   return { totals, byId };
 }
 
-function isSetLogged(s) {
-  return !!s.done || (s.reps != null && s.reps > 0) || s.weightKg != null || (s.durationSec != null && s.durationSec > 0);
-}
-
-function isCardioLogged(c) {
-  return !!c && (!!c.done || (c.durationMin != null && c.durationMin > 0) || (c.distanceKm != null && c.distanceKm > 0));
-}
-
-function finalizeEntries(entries) {
+export function finalizeEntries(entries) {
   return (entries ?? [])
     .map((e) => {
       const obj = e.toObject ? e.toObject() : e;
       const validSets = (obj.sets ?? [])
-        .filter(isSetLogged)
+        .filter((s) => s.done === true)
         .map((s) => ({ ...s, done: true }));
-      const validCardio = isCardioLogged(obj.cardio)
+      const validCardio = obj.cardio?.done === true
         ? { ...obj.cardio, done: true }
         : null;
       return { ...obj, sets: validSets, cardio: validCardio };
@@ -99,14 +95,14 @@ async function closeExpiredSessions(userId = null) {
     doc.entries = finalizeEntries(doc.entries);
 
     if (!doc.entries.length) {
-      await Session.deleteOne({ _id: doc._id, status: 'active' });
+      await Session.deleteOne({ _id: doc._id, status: 'active', __v: doc.__v });
       continue;
     }
 
     doc.status = 'completed';
     doc.endedAt = new Date(doc.startedAt.getTime() + MAX_ACTIVE_WORKOUT_MS);
     await recompute(doc);
-    await doc.save();
+    try { await doc.save(); } catch (err) { if (err.name === 'VersionError') continue; throw err; }
 
     if (doc.routine) {
       await Routine.updateOne({ _id: doc.routine }, { lastPerformedAt: doc.endedAt });
@@ -130,9 +126,10 @@ router.use(async (req, _res, next) => {
   }
 });
 
-function localToday() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function requireRevision(req, doc) {
+  if (!Number.isInteger(req.body?.revision) || req.body.revision !== (doc.__v ?? 0)) {
+    throw Object.assign(new Error('This workout changed on another device. Review the latest version before saving.'), { status: 409 });
+  }
 }
 
 /* ---------------------------------------------------------------- routes */
@@ -153,18 +150,19 @@ router.post('/', async (req, res) => {
     return res.status(200).json({ session: serialize(existing.toObject()), resumed: true });
   }
 
-  const date = req.body?.date ?? localToday();
+  const date = dateISO(req.body?.date ?? todayFor(req.timeZone), todayFor(req.timeZone));
   const bodyWeightKg = req.user.weightOn(date);
   if (!(bodyWeightKg > 0)) return res.status(400).json({ error: 'Add your body weight first — calorie estimates need it' });
 
   let entries = [];
-  let name = req.body?.name?.trim() || 'Quick Workout';
+  let name = text(req.body?.name ?? 'Quick Workout', 'Workout name');
   let routineId = null;
 
   if (req.body?.routineId) {
+    id(req.body.routineId);
     const routine = await Routine.findOne({ _id: req.body.routineId, user: req.user._id }).lean();
     if (!routine) return res.status(404).json({ error: 'Routine not found' });
-    const byId = await exerciseMap(routine.exercises.map((e) => e.exercise));
+    const byId = await accessibleExercises(routine.exercises.map((e) => String(e.exercise)), req.user._id);
     name = routine.name;
     routineId = routine._id;
     // Pre-build the planned sets so the screen opens ready to log, not empty.
@@ -175,18 +173,20 @@ router.post('/', async (req, res) => {
         sets:
           ex?.type === 'cardio'
             ? []
-            : Array.from({ length: re.targetSets || 3 }, () => ({
+            : Array.from({ length: number(re.targetSets || 3, 'Target sets', 1, 100, true) }, () => ({
                 reps: re.targetReps || null,
                 weightKg: re.targetWeightKg ?? null,
+                durationSec: re.targetDurationSec ?? null,
+                restSec: re.restSec ?? null,
                 done: false,
                 isWarmup: false,
               })),
-        cardio: ex?.type === 'cardio' ? { durationMin: null, distanceKm: null, intensity: 'moderate', done: false } : null,
+        cardio: ex?.type === 'cardio' ? { durationMin: re.targetCardioMin ?? null, distanceKm: null, intensity: 'moderate', done: false } : null,
       };
     });
   }
 
-  const doc = await Session.create({
+  const doc = new Session({
     user: req.user._id,
     date,
     name,
@@ -197,11 +197,44 @@ router.post('/', async (req, res) => {
     entries,
   });
   await recompute(doc);
-  await doc.save();
+  try {
+    await doc.save();
+  } catch (err) {
+    if (err.code !== 11000) throw err;
+    const active = await Session.findOne({ user: req.user._id, status: 'active' });
+    if (!active) throw err;
+    return res.json({ session: serialize(active.toObject()), resumed: true });
+  }
   res.status(201).json({ session: serialize(doc.toObject()) });
 });
 
-/** Autosave target. The client sends the whole entry list; last write wins. */
+/** Explicit history edits stay separate from delayed active-workout autosaves. */
+router.patch('/:id/completed', async (req, res) => {
+  const doc = await Session.findOne({ _id: req.params.id, user: req.user._id });
+  if (!doc) return res.status(404).json({ error: 'Workout not found' });
+
+  if (doc.status !== 'completed') return res.status(409).json({ error: 'Finish this workout before editing it in History' });
+  requireRevision(req, doc);
+  let changes;
+  try {
+    changes = completedWorkoutChanges(req.body, doc, todayFor(req.timeZone));
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  changes.name = text(changes.name, 'Workout name');
+  changes.date = dateISO(changes.date, todayFor(req.timeZone));
+  changes.entries = entriesInput(req.body.entries, true);
+  const byId = await accessibleExercises(changes.entries.map((entry) => entry.exercise), req.user._id);
+  if (changes.entries.some((entry) => !byId.has(entry.exercise))) {
+    return res.status(400).json({ error: 'One of these exercises is no longer available' });
+  }
+  Object.assign(doc, changes);
+  await recompute(doc);
+  await doc.save();
+  res.json({ session: serialize(doc.toObject()) });
+});
+
+/** Autosave replaces the entry list only when the client's revision is current. */
 router.patch('/:id', async (req, res) => {
   const doc = await Session.findOne({ _id: req.params.id, user: req.user._id });
   if (!doc) return res.status(404).json({ error: 'Workout not found' });
@@ -209,26 +242,14 @@ router.patch('/:id', async (req, res) => {
     return res.status(409).json({ error: 'This workout has already ended', session: serialize(doc.toObject()) });
   }
 
-  if (req.body.name !== undefined) doc.name = req.body.name;
-  if (req.body.notes !== undefined) doc.notes = req.body.notes;
-  if (req.body.date !== undefined) doc.date = req.body.date;
+  requireRevision(req, doc);
+  if (req.body.name !== undefined) doc.name = text(req.body.name, 'Workout name');
+  if (req.body.notes !== undefined) doc.notes = text(req.body.notes, 'Workout notes', 2000, false);
+  if (req.body.date !== undefined) doc.date = dateISO(req.body.date, todayFor(req.timeZone));
   if (req.body.entries !== undefined) {
-    doc.entries = req.body.entries
-      .filter((e) => e.exerciseId)
-      .map((e) => ({
-        exercise: e.exerciseId,
-        sets: (e.sets ?? []).map((s) => ({
-          reps: s.reps ?? null,
-          weightKg: s.weightKg ?? null,
-          durationSec: s.durationSec ?? null,
-          rpe: s.rpe ?? null,
-          isWarmup: !!s.isWarmup,
-          done: !!s.done,
-          restSec: s.restSec ?? null,
-        })),
-        cardio: e.cardio ?? null,
-        notes: e.notes ?? '',
-      }));
+    const entries = entriesInput(req.body.entries);
+    await accessibleExercises(entries.map((e) => e.exercise), req.user._id);
+    doc.entries = entries;
   }
 
   await recompute(doc);
@@ -242,43 +263,17 @@ router.patch('/:id', async (req, res) => {
  * missed day without interrupting a workout in progress.
  */
 router.post('/manual', async (req, res) => {
-  const { date, name, durationMin, entries } = req.body ?? {};
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Pick a date' });
-  if (date > localToday()) return res.status(400).json({ error: 'That date is in the future' });
-  if (!Array.isArray(entries) || !entries.length) return res.status(400).json({ error: 'Add at least one exercise' });
-
+  const date = dateISO(req.body?.date, todayFor(req.timeZone));
+  const name = text(req.body?.name || 'Logged afterwards', 'Workout name');
+  const minutes = number(req.body?.durationMin ?? 45, 'Duration', 0.01, 600);
+  const entries = entriesInput(req.body?.entries, true);
+  if (!entries.length || entries.some((e) => !e.sets.length && !e.cardio)) return res.status(400).json({ error: 'Fill in at least one set or cardio entry per exercise' });
+  await accessibleExercises(entries.map((e) => e.exercise), req.user._id);
   const bodyWeightKg = req.user.weightOn(date);
   if (!(bodyWeightKg > 0)) return res.status(400).json({ error: 'Add your body weight first' });
-
-  const minutes = Math.max(1, Math.min(Number(durationMin) || 45, 600));
-  const startedAt = new Date(`${date}T12:00:00`);
-
-  const doc = await Session.create({
-    user: req.user._id,
-    date,
-    name: name?.trim() || 'Logged afterwards',
-    status: 'completed',
-    startedAt,
-    endedAt: new Date(startedAt.getTime() + minutes * 60000),
-    bodyWeightKg,
-    entries: entries
-      .filter((e) => e.exerciseId)
-      .map((e) => ({
-        exercise: e.exerciseId,
-        // Everything in a manual entry is by definition already done.
-        sets: (e.sets ?? []).map((s) => ({
-          reps: s.reps ?? null,
-          weightKg: s.weightKg ?? null,
-          durationSec: s.durationSec ?? null,
-          rpe: s.rpe ?? null,
-          isWarmup: !!s.isWarmup,
-          done: true,
-          restSec: s.restSec ?? null,
-        })),
-        cardio: e.cardio ? { ...e.cardio, done: true } : null,
-        notes: e.notes ?? '',
-      })),
-  });
+  const startedAt = new Date(`${date}T12:00:00Z`);
+  const doc = await Session.create({ user: req.user._id, date, name, status: 'completed', startedAt,
+    endedAt: new Date(startedAt.getTime() + minutes * 60000), bodyWeightKg, entries });
 
   await recompute(doc);
   await doc.save();
@@ -289,6 +284,7 @@ router.post('/manual', async (req, res) => {
 router.post('/:id/save-as-routine', async (req, res) => {
   const doc = await Session.findOne({ _id: req.params.id, user: req.user._id }).lean();
   if (!doc) return res.status(404).json({ error: 'Workout not found' });
+  const name = text(req.body?.name ?? `${doc.name} routine`, 'Routine name');
 
   const exercises = (doc.entries ?? []).map((e) => {
     const working = (e.sets ?? []).filter((s) => !s.isWarmup);
@@ -305,7 +301,7 @@ router.post('/:id/save-as-routine', async (req, res) => {
 
   const routine = await Routine.create({
     user: req.user._id,
-    name: req.body?.name?.trim() || `${doc.name} routine`,
+    name,
     note: `Built from the workout on ${doc.date}`,
     exercises,
   });
@@ -316,9 +312,11 @@ router.post('/:id/save-as-routine', async (req, res) => {
 router.post('/:id/beacon', async (req, res) => {
   const doc = await Session.findOne({ _id: req.params.id, user: req.user._id, status: 'active' });
   if (!doc || !Array.isArray(req.body?.entries)) return res.status(204).end();
-  doc.entries = req.body.entries
-    .filter((e) => e.exerciseId)
-    .map((e) => ({ exercise: e.exerciseId, sets: e.sets ?? [], cardio: e.cardio ?? null, notes: e.notes ?? '' }));
+  requireRevision(req, doc);
+  const entries = entriesInput(req.body.entries);
+  await accessibleExercises(entries.map((e) => e.exercise), req.user._id);
+  doc.entries = entries;
+
   await recompute(doc);
   await doc.save();
   res.status(204).end();
@@ -335,10 +333,12 @@ router.post('/:id/finish', async (req, res) => {
     return res.json({ session: serialize(doc.toObject()), newPRs: [], discarded: false, autoClosed: true });
   }
 
+  requireRevision(req, doc);
   doc.entries = finalizeEntries(doc.entries);
 
   if (!doc.entries.length) {
-    await Session.deleteOne({ _id: doc._id });
+    const removed = await Session.deleteOne({ _id: doc._id, status: 'active', __v: doc.__v });
+    if (!removed.deletedCount) return res.status(409).json({ error: 'This workout changed while finishing. Review it before trying again.' });
     return res.json({ discarded: true, session: null, newPRs: [] });
   }
 
@@ -394,11 +394,19 @@ router.post('/:id/finish', async (req, res) => {
 });
 
 router.get('/', async (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 30, 200);
-  const skip = Number(req.query.skip) || 0;
+  const limit = number(Number(req.query.limit ?? 30), 'Page size', 1, 100, true);
+  const skip = number(Number(req.query.skip ?? 0), 'Page offset', 0, 1000000, true);
+  const query = { user: req.user._id, status: 'completed' };
+  const search = text(String(req.query.q ?? ''), 'Search', 120, false);
+  if (search) {
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(escaped, 'i');
+    const exercises = await Exercise.find({ name: pattern, $or: [{ owner: null }, { owner: req.user._id }] }).select('_id').lean();
+    query.$or = [{ name: pattern }, { date: pattern }, { 'entries.exercise': { $in: exercises.map((e) => e._id) } }];
+  }
   const [list, total] = await Promise.all([
-    Session.find({ user: req.user._id, status: 'completed' }).sort({ date: -1, startedAt: -1 }).skip(skip).limit(limit).lean(),
-    Session.countDocuments({ user: req.user._id, status: 'completed' }),
+    Session.find(query).sort({ date: -1, startedAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    Session.countDocuments(query),
   ]);
   res.json({ sessions: list.map(serialize), total });
 });
@@ -410,6 +418,8 @@ router.get('/', async (req, res) => {
  */
 router.get('/previous', async (req, res) => {
   const ids = String(req.query.ids ?? '').split(',').filter(Boolean);
+  if (ids.length > 100) return res.status(400).json({ error: 'Too many exercise IDs' });
+  ids.forEach(id);
   if (!ids.length) return res.json({ previous: {} });
 
   const docs = await Session.find({
@@ -422,7 +432,7 @@ router.get('/previous', async (req, res) => {
     .select('date entries bodyWeightKg')
     .lean();
 
-  const byId = await exerciseMap(ids);
+  const byId = await accessibleExercises(ids, req.user._id);
   const previous = {};
   for (const s of docs) {
     for (const e of s.entries ?? []) {
