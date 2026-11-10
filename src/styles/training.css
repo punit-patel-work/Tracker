@@ -252,3 +252,14 @@
   .routine-card:focus-within .training-art, .routine-card:hover .training-art { transform: rotate(-2deg) translateY(-3px); }
   .coach-tools button { transition: background-color 150ms ease, color 150ms ease; }
 }
+
+.exercise-unit-picker {
+  display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 13px; font-weight: 500; color: var(--text-2);
+}
+.exercise-unit-picker select {
+  min-height: 40px; padding: 4px 8px; border: 1px solid var(--border-strong);
+  border-radius: 8px; background: var(--surface); color: var(--text); font: inherit;
+}
+.exercise-unit-picker select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (pointer: coarse) { .exercise-unit-picker select { min-height: 44px; } }

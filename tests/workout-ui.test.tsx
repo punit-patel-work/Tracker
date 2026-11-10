@@ -95,6 +95,42 @@ describe('workout persistence', () => {
 });
 
 describe('workout interface', () => {
+  it('accepts mixed machine units, preserves loads when switching, and remembers the choice for editing', async () => {
+    const row = { ...exercise, id: '333333333333333333333333', name: 'Seated row' };
+    state.app.byId.set(row.id, row);
+    const session = fresh();
+    session.entries.push({ exerciseId: row.id, sets: [{ reps: 10, weightKg: 30, done: false }] });
+    vi.mocked(api.activeSession).mockResolvedValue({ session: session as any });
+    const view = render(<WorkoutProvider><Workout go={vi.fn()} /><Probe /></WorkoutProvider>);
+    const picker = await screen.findByLabelText('Weight unit for Bench press');
+    fireEvent.change(picker, { target: { value: 'imperial' } });
+    const lbs = screen.getByLabelText('Set 1 weight in lb', { exact: true }) as HTMLInputElement;
+    expect(lbs.value).toBe('110.23');
+    expect((screen.getByLabelText('Set 1 weight in kg', { exact: true }) as HTMLInputElement).value).toBe('30');
+    fireEvent.focus(lbs);
+    fireEvent.blur(lbs);
+    expect(exposed.entries[0].sets[0].weightKg).toBe(50);
+    act(() => lbs.focus());
+    fireEvent.change(lbs, { target: { value: '100' } });
+    fireEvent.change(picker, { target: { value: 'metric' } });
+    expect(exposed.entries[0].sets[0].weightKg).toBeCloseTo(45.359237, 8);
+    fireEvent.change(picker, { target: { value: 'imperial' } });
+    expect(exposed.entries[0].sets[0].weightKg).toBeCloseTo(45.359237, 8);
+    view.unmount();
+
+    const editor = () => <ManualLog session={{ ...fresh(), totals: { durationMin: 45 } } as any}
+      onClose={vi.fn()} onSaved={vi.fn()} />;
+    const past = render(editor());
+    expect((screen.getByLabelText('Set 1 weight') as HTMLInputElement).value).toBe('110.23');
+    state.app.user = { ...state.app.user, id: 'bob' };
+    past.rerender(editor());
+    expect((screen.getByLabelText('Set 1 weight') as HTMLInputElement).value).toBe('50');
+    state.app.user = { ...state.app.user, id: 'alice' };
+    past.rerender(editor());
+    fireEvent.change(screen.getByLabelText('Weight unit for Bench press'), { target: { value: '' } });
+    expect((screen.getByLabelText('Set 1 weight') as HTMLInputElement).value).toBe('50');
+  });
+
   it('requires a finish review and can return to training without saving', async () => {
     render(<WorkoutProvider><Workout go={vi.fn()} /></WorkoutProvider>);
     await screen.findByText('Test workout');

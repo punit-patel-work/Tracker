@@ -3,6 +3,8 @@ import { useApp } from '../state/app';
 import { useWorkout } from '../state/workout';
 import { api } from '../lib/api';
 import { relativeDay, todayISO, fromKg, toKg, weightLabel } from '../lib/format';
+import { useExerciseUnits } from '../lib/exerciseUnits';
+import ExerciseUnitPicker from '../components/ExerciseUnitPicker';
 import RoutineReview from '../components/RoutineReview';
 import ExercisePicker from '../components/ExercisePicker';
 import ExerciseAlternatives from '../components/ExerciseAlternatives';
@@ -138,8 +140,8 @@ function RoutineEditor({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const { byId, user } = useApp();
-  const units = user?.units ?? 'metric';
+  const { byId } = useApp();
+  const exerciseUnits = useExerciseUnits();
   const [name, setName] = useState(routine?.name ?? '');
   const [note, setNote] = useState(routine?.note ?? '');
   const [list, setList] = useState<RoutineExercise[]>(routine?.exercises ?? []);
@@ -239,12 +241,14 @@ function RoutineEditor({
         <div className="stack" style={{ gap: 10 }}>
           {list.map((re, i) => {
             const ex = byId.get(re.exerciseId);
+            const units = exerciseUnits.forExercise(re.exerciseId);
             const cardio = ex?.type === 'cardio';
             return (
               <div key={re.exerciseId} className="routine-edit-row">
                 <div className="routine-edit-name">
                   <strong>{ex?.name ?? 'Unknown'}</strong>
                   <span className="muted">{ex?.equipment}</span>
+                  {ex && !cardio && <ExerciseUnitPicker id={ex.id} name={ex.name} />}
                 </div>
 
                 {!cardio && (

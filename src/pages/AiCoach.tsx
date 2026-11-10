@@ -8,6 +8,7 @@ import { aiApi,equipmentLabels,type TrainingPreferences,type Bootstrap,type AiDr
 import { fromKg,toKg,weightLabel,num } from '../lib/format';
 import type { Session } from '../lib/types';
 import ExerciseAlternatives from '../components/ExerciseAlternatives';
+import { useExerciseUnits } from '../lib/exerciseUnits';
 import ExercisePicker from '../components/ExercisePicker';
 import '../styles/ai.css';
 const tools = [
@@ -162,11 +163,11 @@ export function RoutinePreview({draft,onSaved}:{draft:AiDraft;onSaved:()=>Promis
     try{await aiApi('/drafts/'+draft.id+'/save','POST',{dayIndex:index,name:day.name,note:day.focus,exercises:day.exercises});setSaved(s=>[...s,index]);setDirty(false);await onSaved();}
     catch(e){setError((e as Error).message);}finally{setBusy(null);}
   };
-  const units=user?.units??'metric';
+  const exerciseUnits = useExerciseUnits();
   return <div className="stack"><section className="card card-pad"><h2>{plan.title}</h2><p>{plan.explanation}</p>{plan.limitations.length>0&&<details><summary>Assumptions and limitations</summary><ul>{plan.limitations.map((s,i)=><li key={i}>{s}</li>)}</ul></details>}</section>
     {error&&<p role="alert" className="form-error">{error}</p>}
     {plan.days.map((day,d)=><section className="card card-pad stack" key={d}><div className="ai-day-heading"><label className="field">Session name<input className="input" value={day.name} maxLength={100} disabled={saved.includes(d)} onChange={e=>{setDirty(true);setPlan(p=>({...p,days:p.days.map((x,i)=>i===d?{...x,name:e.target.value}:x)}));}}/></label><span>{day.estimatedMinutes??'—'} min estimated at generation</span></div><p>{day.focus}</p>
-      {day.exercises.map((item,i)=>{const ex=byId.get(item.exerciseId);return <div className="ai-exercise" key={item.exerciseId}><div className="ai-exercise-head"><div><h3>{ex?.name??'Exercise unavailable'}</h3><small>{ex?.equipment} · {ex?.primaryMuscles?.join(', ')}</small></div><button className="btn btn-ghost btn-sm" disabled={saved.includes(d)} onClick={()=>setSwap({day:d,index:i})}>Alternatives</button></div><p>{item.reason}</p>
+      {day.exercises.map((item,i)=>{const ex=byId.get(item.exerciseId);const units=exerciseUnits.forExercise(item.exerciseId);return <div className="ai-exercise" key={item.exerciseId}><div className="ai-exercise-head"><div><h3>{ex?.name??'Exercise unavailable'}</h3><small>{ex?.equipment} · {ex?.primaryMuscles?.join(', ')}</small></div><button className="btn btn-ghost btn-sm" disabled={saved.includes(d)} onClick={()=>setSwap({day:d,index:i})}>Alternatives</button></div><p>{item.reason}</p>
         <fieldset disabled={saved.includes(d)} className="ai-targets ai-fieldset">
           {ex?.type==='cardio'?<Target label="Minutes" value={item.targetCardioMin} min={1} max={90} onChange={v=>update(d,i,{targetCardioMin:v})}/>:<>
           <Target label="Sets" value={item.targetSets} min={1} max={8} onChange={v=>update(d,i,{targetSets:v??0})}/>

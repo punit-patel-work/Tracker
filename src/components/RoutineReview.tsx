@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { aiApi } from '../lib/ai';
+import { useExerciseUnits } from '../lib/exerciseUnits';
 import { fromKg, weightLabel } from '../lib/format';
 import { useApp } from '../state/app';
 import type { Routine } from '../lib/types';
@@ -11,7 +12,7 @@ type Review = { summary: string; changes: { exerciseId: string; reason: string; 
 type Data = { rows: Row[]; stamp: string; revision: number; canUndo: boolean; review: Review | null };
 
 export default function RoutineReview({ routine, onClose }: { routine: Routine; onClose: () => void }) {
-  const { user, byId, reloadRoutines } = useApp();
+  const { byId, reloadRoutines } = useApp();
   const [data, setData] = useState<Data | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [consent, setConsent] = useState(false);
@@ -20,7 +21,7 @@ export default function RoutineReview({ routine, onClose }: { routine: Routine; 
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
   const path = '/coaching/routines/' + routine.id;
-  const units = user?.units ?? 'metric';
+  const exerciseUnits = useExerciseUnits();
   useEffect(() => {
     const controller = new AbortController();
     setData(null); setSelected([]); setError('');
@@ -35,6 +36,7 @@ export default function RoutineReview({ routine, onClose }: { routine: Routine; 
     const ex = byId.get(row.exerciseId);
     if (ex?.type === 'cardio') return (original?.targetCardioMin ?? '—') + ' min';
     if (ex?.isTimed) return target.targetSets + ' × ' + (original?.targetDurationSec ?? '—') + ' sec';
+    const units = exerciseUnits.forExercise(row.exerciseId);
     const weight = target.targetWeightKg == null ? '' : ' at ' + Number(fromKg(target.targetWeightKg, units).toFixed(2)) + ' ' + weightLabel(units);
     return target.targetSets + ' × ' + target.targetReps + weight;
   }

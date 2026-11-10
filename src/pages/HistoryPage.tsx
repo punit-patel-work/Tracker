@@ -10,6 +10,7 @@ import { effectiveLoadKg, estimated1RM } from '../../shared/engine.js';
 
 import { EmptyState, Toast, useToast } from '../components/common';
 
+import { useExerciseUnits } from '../lib/exerciseUnits';
 import ManualLog from './ManualLog';
 
 import CalorieBreakdown from '../components/CalorieBreakdown';
@@ -23,6 +24,7 @@ import type { Session } from '../lib/types';
 export default function HistoryPage() {
 
   const { user, byId, reloadRoutines } = useApp();
+  const exerciseUnits = useExerciseUnits();
 
   const [logging, setLogging] = useState(false);
 
@@ -324,6 +326,7 @@ export default function HistoryPage() {
                     {s.entries.map((entry) => {
 
                       const ex = byId.get(entry.exerciseId);
+                      const loadUnits = exerciseUnits.forExercise(entry.exerciseId);
 
                       if (!ex) return null;
 
@@ -363,7 +366,7 @@ export default function HistoryPage() {
 
                                   {/* Bodyweight lifts show total load, not the added plates alone. */}
 
-                                  <th>{ex.isTimed ? 'Hold' : `Load (${unit})`}</th>
+                                  <th>{ex.isTimed ? 'Hold' : `Load (${weightLabel(loadUnits)})`}</th>
 
                                   <th>{ex.isTimed ? '' : 'Reps'}</th>
 
@@ -391,11 +394,11 @@ export default function HistoryPage() {
 
                                           ? `${set.durationSec ?? 0}s`
 
-                                          : `${num(fromKg(load, units), 1)}${
+                                          : `${num(fromKg(load, loadUnits), 1)}${
 
                                               ex.isBodyweight && (set.weightKg ?? 0) > 0
 
-                                                ? ` (BW+${num(fromKg(set.weightKg ?? 0, units), 1)})`
+                                                ? ` (BW+${num(fromKg(set.weightKg ?? 0, loadUnits), 1)})`
 
                                                 : ex.isBodyweight
 
@@ -415,7 +418,7 @@ export default function HistoryPage() {
 
                                           ? '—'
 
-                                          : num(fromKg(estimated1RM(load, set.reps ?? 0), units), 1)}
+                                          : num(fromKg(estimated1RM(load, set.reps ?? 0), loadUnits), 1)}
 
                                       </td>
 

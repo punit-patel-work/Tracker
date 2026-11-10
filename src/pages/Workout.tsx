@@ -13,6 +13,8 @@ import {
   weightLabel,
 } from '../lib/format';
 import { effectiveLoadKg, estimated1RM, suggestNextWeight, workoutElapsedMs, workoutPauseAt, RESUME_WINDOW_MS } from '../../shared/engine.js';
+import { useExerciseUnits } from '../lib/exerciseUnits';
+import ExerciseUnitPicker from '../components/ExerciseUnitPicker';
 import ExercisePicker from '../components/ExercisePicker';
 import ExerciseAlternatives from '../components/ExerciseAlternatives';
 import PlateMath from '../components/PlateMath';
@@ -27,6 +29,7 @@ const INTENSITIES: Intensity[] = ['light', 'moderate', 'vigorous', 'max'];
 
 export default function Workout({ go }: { go: (page: string) => void }) {
   const { user, byId } = useApp();
+  const exerciseUnits = useExerciseUnits();
   const w = useWorkout();
   const [picking, setPicking] = useState(false);
   const [summary, setSummary] = useState<{ session: Session | null; newPRs: NewPR[] } | null>(null);
@@ -183,7 +186,7 @@ export default function Workout({ go }: { go: (page: string) => void }) {
               key={entry.exerciseId}
               entry={entry}
               exercise={ex}
-              units={units}
+              units={ex.type === 'cardio' ? units : exerciseUnits.forExercise(ex.id)}
               previous={w.previous[entry.exerciseId]}
               canMoveUp={index > 0}
               canMoveDown={index < w.entries.length - 1}
@@ -469,6 +472,7 @@ function ExerciseCard({
         </p>
       )}
 
+      <ExerciseUnitPicker id={exercise.id} name={exercise.name} />
       <p className="hint">Unchecked rows are targets. Tap the checkmark after each completed set.</p>
       <div className="set-head">
         <span>Set</span>
@@ -647,6 +651,7 @@ function SetRow({
         <span className="set-ghost">{ghostText}</span>
 
         <NumberField
+          key={units}
           value={set.weightKg == null ? '' : String(round(fromKg(set.weightKg, units), 2))}
           placeholder={
             exercise.isBodyweight ? '+0' : ghost?.weightKg != null ? String(round(fromKg(ghost.weightKg, units), 1)) : '0'
@@ -784,7 +789,7 @@ function NumberField({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           focused.current = false;
-          onCommit(draft.trim());
+          if (draft.trim() !== value) onCommit(draft.trim());
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur();
@@ -813,7 +818,7 @@ function Summary({
   onEdit: () => void;
 }) {
   const { session, newPRs } = data;
-  const unit = weightLabel(units);
+  const exerciseUnits = useExerciseUnits();
 
   if (!session) {
     return (
@@ -876,17 +881,21 @@ function Summary({
             <h4>
               <I.Trophy size={17} /> {newPRs.length} new personal {newPRs.length === 1 ? 'record' : 'records'}
             </h4>
-            {newPRs.map((pr) => (
+            {newPRs.map((pr) => {
+              const loadUnits = exerciseUnits.forExercise(pr.exerciseId);
+              const unit = weightLabel(loadUnits);
+              return (
               <div key={pr.exerciseId} className="pr-row">
                 <span className="pr-name">{pr.name}</span>
                 <b>
-                  {num(fromKg(pr.e1rm, units), 1)} {unit}
+                  {num(fromKg(pr.e1rm, loadUnits), 1)} {unit}
                 </b>
                 <span className="muted">
-                  was {num(fromKg(pr.previous, units), 1)} {unit}
+                  was {num(fromKg(pr.previous, loadUnits), 1)} {unit}
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

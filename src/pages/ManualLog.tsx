@@ -3,6 +3,8 @@ import { useModal } from '../components/useModal';
 import { useApp } from '../state/app';
 import { api } from '../lib/api';
 import { distanceLabel, fromKg, fromKm, shiftDays, toKg, toKm, todayISO, weightLabel } from '../lib/format';
+import { useExerciseUnits } from '../lib/exerciseUnits';
+import ExerciseUnitPicker from '../components/ExerciseUnitPicker';
 import ExercisePicker from '../components/ExercisePicker';
 import * as I from '../components/Icon';
 import type { Entry, Exercise, Intensity, Session } from '../lib/types';
@@ -15,6 +17,7 @@ export default function ManualLog({ session, onClose, onSaved }: {
   session?: Session; onClose: () => void; onSaved: (session: Session) => void;
 }) {
   const { user, byId } = useApp();
+  const exerciseUnits = useExerciseUnits();
   const [date, setDate] = useState(session?.date ?? shiftDays(todayISO(), -1));
   const [name, setName] = useState(session?.name ?? '');
   const [durationMin, setDurationMin] = useState(String(session?.totals.durationMin ?? 45));
@@ -142,6 +145,7 @@ export default function ManualLog({ session, onClose, onSaved }: {
           {entries.map((entry) => {
             const ex = byId.get(entry.exerciseId);
             if (!ex) return null;
+            const loadUnits = exerciseUnits.forExercise(ex.id);
             return (
               <div className="ex-block" key={entry.exerciseId}>
                 <div className="ex-head" style={{ marginBottom: 10 }}>
@@ -286,6 +290,7 @@ export default function ManualLog({ session, onClose, onSaved }: {
                   </div>
                 ) : (
                   <>
+                    {!ex.isTimed && <ExerciseUnitPicker id={ex.id} name={ex.name} />}
                     {entry.sets.map((set, i) => (
                       <div className="manual-set" key={i}>
                         <button className="set-no" title="Toggle warm-up set" aria-label={`Set ${i + 1} warm-up`}
@@ -309,12 +314,12 @@ export default function ManualLog({ session, onClose, onSaved }: {
                           <>
                             <input
                               className="mini-input"
-                              inputMode="decimal"
-                              placeholder={ex.isBodyweight ? `+${unit}` : unit}
-                              value={set.weightKg == null ? '' : Math.round(fromKg(set.weightKg, units) * 100) / 100}
+                              type="number" min={0} step="any" inputMode="decimal"
+                              placeholder={(ex.isBodyweight ? '+' : '') + weightLabel(loadUnits)}
+                              value={set.weightKg == null ? '' : Math.round(fromKg(set.weightKg, loadUnits) * 100) / 100}
                               onChange={(e) =>
                                 patchSet(entry.exerciseId, i, {
-                                  weightKg: e.target.value === '' ? null : toKg(Number(e.target.value), units),
+                                  weightKg: e.target.value === '' ? null : toKg(Number(e.target.value), loadUnits),
                                 })
                               }
                               aria-label={`Set ${i + 1} weight`}
