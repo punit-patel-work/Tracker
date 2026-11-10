@@ -6,14 +6,14 @@ export interface TrainingPreferences {
   age:number|null; weightKg:number|null; heightCm:number|null;
   excludedExerciseIds:string[]; preferences:string; limitations:string;
 }
-export interface AiExercise extends RoutineExercise { reason:string; loadReason:string; targetDurationSec:number|null; targetCardioMin:number|null }
+export interface AiExercise extends RoutineExercise { match?: { name:string; equipment:string; variant:string; kind:string; options:string[] }; reason:string; loadReason:string; targetDurationSec:number|null; targetCardioMin:number|null }
 export interface AiDay { name:string; focus:string; exercises:AiExercise[]; estimatedMinutes?:number }
 export interface RoutineResult { title:string; explanation:string; limitations:string[]; days:AiDay[] }
 export interface InsightResult { summary:string; observations:{title:string;detail:string;evidenceIds:string[]}[]; nextSteps:string[]; limitations:string[] }
-export interface AiDraft { id:string;savedDays?:number[];task:'routine'|'review'|'explanation'|'question';question?:string;result:RoutineResult|InsightResult;createdAt:string;model:string;costUsd:number;
+export interface AiDraft { constraints?: Pick<TrainingPreferences,'equipment'|'excludedExerciseIds'>; id:string;savedDays?:number[];task:'routine'|'review'|'explanation'|'question';question?:string;result:RoutineResult|InsightResult;createdAt:string;model:string;costUsd:number;
   weekly?:{from:string;to:string;current:{sessions:number;workingSets:number;minutes:number;estimatedKcal:number};previous:unknown};
   evidence?:{id:string;name:string;date:string}[] }
-export interface Bootstrap {preferences:TrainingPreferences|null;enabled:boolean;configured:boolean;equipment:string[];drafts:AiDraft[]}
+export interface Bootstrap {aiTier?:'regular'|'pro'|'dev';preferences:TrainingPreferences|null;enabled:boolean;configured:boolean;equipment:string[];drafts:AiDraft[]}
 export async function aiApi<T>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T> {
   let res:Response;
   try { res=await fetch('/api/ai'+path,{method,credentials:'same-origin',cache:'no-store',

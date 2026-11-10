@@ -72,3 +72,6 @@
 @media (max-width: 450px) {
   .coach-builder .form-grid:not(.coach-schedule), .coach-planner .planner-day { grid-template-columns: 1fr; }
 }
+
+.saved-suggestion-row { display: flex; align-items: center; gap: 8px; }
+.saved-suggestion-row .ai-saved { flex: 1; min-width: 0; }

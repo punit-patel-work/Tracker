@@ -14,7 +14,7 @@ The three-step questionnaire covers goals, schedule, experience, previous traini
 
 Routine creation uses GPT-6.1 Sol. Weekly reviews and workout explanations use GPT-6 Luna. These model IDs were verified against the configured account. Native server-side fetch calls the Responses API; no additional production package is required.
 
-Routine context contains compatible catalog records and up to 120 completed workouts over 12 weeks, with actual completed sets, reps, kg, difficulty, warm-ups, notes and recorded bodyweight. There is no aggressive tiny exercise shortlist. Matching recent load evidence is checked against the same exercise; missing evidence, a long break, or an implausible increase leaves the load blank. This conservative validation is not a clinical safety guarantee.
+Routine prompts contain goals, equipment, exclusions, training preferences and a summary of up to 20 recently logged exercises. GPT returns named exercises with equipment, variant and targets. The server matches against the member’s eligible catalog and offers a manual choice or custom exercise for unresolved movements. Starting loads come from recent completed work on the same exercise ID.
 
 Results use strict JSON schemas and local validation. Unavailable/repeated exercise IDs, invalid targets, fabricated insight evidence IDs and incomplete responses cannot become usable drafts. No automatic retry or premium-model fallback silently increases spending.
 
@@ -37,7 +37,7 @@ Endpoints are mounted under /api/ai in both server/index.js and api/index.js:
 - GET /bootstrap: account preferences and the latest eight saved suggestions.
 - PUT /preferences: validate and save planning preferences without calling GPT.
 - GET /alternatives/:id: filtered maintained alternatives, no GPT.
-- POST /routine-draft: consent + validated preferences -> history/catalog context -> GPT -> validated draft.
+- POST /routine-draft: consent + validated preferences -> compact preferences and history -> named suggestions -> local catalog matching -> editable draft.
 - POST /weekly-review: consent -> server totals -> GPT -> validated review.
 - POST /workout-explanation: consent + owned completed workout -> validated explanation.
 - POST /drafts/:id/save: owned draft + edited day -> normal routine, idempotently.
@@ -46,7 +46,7 @@ Endpoints are mounted under /api/ai in both server/index.js and api/index.js:
 
 AiPreferences, AiDraft, AiUsage, AiBudget, AiSettings, AiLock and AiAlternative are MongoDB collections. Draft keys include task, model, prompt version and actual supplied context, so changes in relevant data invalidate cached results. Draft lookup always includes user ID. Draft context is retained for the result's provenance and validation; AI settings/usage views do not expose private prompt contents.
 
-Edited preview targets are restored from account-scoped sessionStorage in the same browser tab. They are cleared on sign-out. Generated suggestions themselves are saved server-side. Profile JSON export includes AI preferences and suggestions. Account deletion removes its private AI preferences, drafts, usage and lock records while preserving aggregate billing totals.
+Edited preview targets are restored from account-scoped sessionStorage in the same browser tab. They are cleared on sign-out. Generated suggestions themselves are saved server-side. Customers can remove suggestions from their saved list. The database retains the hidden records, and the profile export includes visible suggestions and preferences. Account deletion removes its private AI preferences, drafts, usage and lock records while preserving aggregate billing totals.
 
 ## Configuration and budget
 
@@ -58,11 +58,11 @@ Optional model variables:
 
 Only models with a maintained price configuration in server/ai/service.js are accepted. The initial application allowance is US$5 per UTC calendar month, editable in Admin -> AI assistance. The model settings do not require different API keys.
 
-An atomic MongoDB reservation checks used + reserved + maximum estimated request cost before a call. One in-flight request per account and 40 paid attempts per rolling 24 hours prevent accidental loops. The reservation includes a deliberately conservative UTF-8 input estimate and maximum output allowance. Separate users cannot reserve the same remaining balance. Lock ownership prevents a late request from clearing a successor's lock.
+An atomic MongoDB reservation checks used + reserved + maximum estimated request cost before a call. Regular accounts cannot generate. Pro accounts can send four requests per rolling 24 hours and 25 per rolling seven days. Dev accounts have no personal request quota. Every tier shares the global budget and generation switch. Cached results use no request allowance. The reservation includes a deliberately conservative UTF-8 input estimate and maximum output allowance. Separate users cannot reserve the same remaining balance. Lock ownership prevents a late request from clearing a successor's lock.
 
 Accounting currently overestimates ordinary input at the cache-write rate; provider invoices are authoritative. Requests without trustworthy usage information conservatively retain their estimated charge. A process crash can leave a reservation until the UTC month resets; inspect provider billing before increasing the allowance to compensate. There is no automatic recharge configuration in the application.
 
-Output allowances are 8,000 tokens for routines and 2,600 for insights, including reasoning. Routine reasoning is low; insight reasoning is none. Timeout is 110 seconds upstream / 125 seconds client-side. The request-size safeguard allows up to 1,000,000 UTF-8 bytes including a protocol buffer; bytes are deliberately a conservative token upper bound. This supports the complete Full Gym catalog alongside detailed history. Larger requests are rejected before any provider call, without dropping workouts. Sol reservations and usage accounting include long-context pricing when the input estimate or actual input exceeds 272,000 tokens.
+Output allowances are 8,000 tokens for routines and 2,600 for insights, including reasoning. Routine reasoning is low; insight reasoning is none. Timeout is 110 seconds upstream / 125 seconds client-side. The request-size safeguard allows up to 1,000,000 UTF-8 bytes including a protocol buffer; bytes are deliberately a conservative token upper bound. Routine generation keeps the catalog on the server. Oversized requests are rejected before contacting the provider. Sol reservations and usage accounting include long-context pricing when the input estimate or actual input exceeds 272,000 tokens.
 
 ## Privacy / limits
 

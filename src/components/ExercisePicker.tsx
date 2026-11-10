@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES, useApp } from '../state/app';
+import { available } from '../../shared/equipment.js';
 import { api } from '../lib/api';
 import * as I from './Icon';
 import type { Exercise } from '../lib/types';
@@ -13,12 +14,14 @@ export default function ExercisePicker({
   onPick,
   onClose,
   exclude = [],
-  multi = false,
+  multi = false, suggestion, allowedEquipment,
 }: {
   onPick: (exercise: Exercise) => void;
   onClose: () => void;
   exclude?: string[];
   multi?: boolean;
+  suggestion?: { name:string; equipment:string; kind:string };
+  allowedEquipment?: string[];
 }) {
   const { exercises, user, toggleFavorite, isFavorite, reloadExercises } = useApp();
   const [query, setQuery] = useState('');
@@ -57,7 +60,7 @@ export default function ExercisePicker({
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = exercises.filter((e) => {
-      if (e.archived) return false;
+      if (e.archived || (allowedEquipment && !available(e,allowedEquipment))) return false;
       if (category !== 'all' && e.category !== category) return false;
       if (!q) return true;
       return (
@@ -72,7 +75,7 @@ export default function ExercisePicker({
       const fb = isFavorite(b.category, b.id) ? 0 : 1;
       return fa - fb || a.name.localeCompare(b.name);
     });
-  }, [exercises, category, query, isFavorite, user]);
+  }, [exercises, category, query, isFavorite, user, allowedEquipment]);
 
   const choose = (ex: Exercise) => {
     onPick(ex);
@@ -93,7 +96,8 @@ export default function ExercisePicker({
 
         {creating ? (
           <NewExerciseForm
-            defaultCategory={category === 'all' ? 'chest' : category}
+            suggestion={suggestion} allowedEquipment={allowedEquipment}
+            defaultCategory={suggestion?.kind==='cardio'?'cardio':category === 'all' ? 'chest' : category}
             onCancel={() => setCreating(false)}
             onCreated={async (ex) => {
               await reloadExercises();
@@ -211,17 +215,20 @@ export default function ExercisePicker({
 }
 
 function NewExerciseForm({
-  defaultCategory,
+  defaultCategory, suggestion, allowedEquipment,
   onCancel,
   onCreated,
 }: {
   defaultCategory: string;
+  suggestion?: {name:string;equipment:string;kind:string};
+  allowedEquipment?: string[];
   onCancel: () => void;
   onCreated: (ex: Exercise) => void;
 }) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState(suggestion?.name ?? '');
   const [category, setCategory] = useState(defaultCategory);
-  const [equipment, setEquipment] = useState('');
+  const [equipment, setEquipment] = useState(suggestion?.equipment ?? '');
+  const [isTimed,setIsTimed]=useState(suggestion?.kind==='timed');
   const [muscles, setMuscles] = useState('');
   const [isBarbell, setIsBarbell] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -232,6 +239,7 @@ function NewExerciseForm({
     setBusy(true);
     setError('');
     try {
+      if (allowedEquipment && !available({ name, equipment },allowedEquipment)) throw new Error('Choose equipment available for this plan.');
       const { exercise } = await api.createExercise({
         name,
         category,
@@ -239,9 +247,10 @@ function NewExerciseForm({
         equipment,
         muscles: muscles.split(',').map((m) => m.trim()).filter(Boolean),
         isBarbell,
+        isTimed:category!=='cardio' && isTimed,
         isDistanceBased: category === 'cardio',
       });
-      onCreated(exercise);
+      await onCreated(exercise);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create that exercise');
     } finally {
@@ -274,6 +283,7 @@ function NewExerciseForm({
           <label htmlFor="ne-mus">Muscles (comma separated)</label>
           <input id="ne-mus" className="input" value={muscles} onChange={(e) => setMuscles(e.target.value)} />
         </div>
+        {category !== 'cardio' && <label className="check-line full"><input type="checkbox" checked={isTimed} onChange={e=>setIsTimed(e.target.checked)}/>Timed hold</label>}
         {category !== 'cardio' && (
           <label className="check-line full">
             <input type="checkbox" checked={isBarbell} onChange={(e) => setIsBarbell(e.target.checked)} />

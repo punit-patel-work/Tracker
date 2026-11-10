@@ -16,7 +16,7 @@ try {
  await page.route('**/api/ai/**',async route=>{
   const path=new URL(route.request().url()).pathname;
   let data={};
-  if(path.endsWith('/bootstrap'))data={preferences:null,enabled:true,configured:true,equipment:[],drafts:[draft]};
+  if(path.endsWith('/bootstrap'))data={preferences:null,aiTier:'pro',enabled:true,configured:true,equipment:[],drafts:[draft]};
   else if(path.includes('/coaching/weeks/'))data={revision:-1,slots:[],completed:[],preferredDays:[]};
   else if(path.endsWith('/routine-draft'))data={draft,cached:false};
   else if(path.includes('/drafts/')&&path.endsWith('/save'))data={routineId:'preview-saved'};

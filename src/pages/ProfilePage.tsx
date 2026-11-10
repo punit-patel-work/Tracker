@@ -69,7 +69,7 @@ export default function ProfilePage() {
             <I.User size={24} /> {user.name}
           </h2>
           <p className="page-sub">
-            {user.email}{' '}
+            {user.email}{' '}<span className="verified-pill">{user.aiTier === 'dev' ? 'Dev' : user.aiTier === 'pro' ? 'Pro' : 'Regular'}</span>{' '}
             {user.emailVerified ? (
               <span className="verified-pill">
                 <I.Check size={12} /> Verified

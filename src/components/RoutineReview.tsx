@@ -9,10 +9,10 @@ type Target = { targetSets: number; targetReps: number; targetWeightKg: number |
 type Row = { exerciseId: string; name: string; current: Target; proposed: Target | null; reason: string;
   evidence: { id: string; date: string; name: string }[] };
 type Review = { summary: string; changes: { exerciseId: string; reason: string; evidenceIds: string[] }[] };
-type Data = { rows: Row[]; stamp: string; revision: number; canUndo: boolean; review: Review | null };
+type Data = { rows: Row[]; stamp: string; revision: number; canUndo: boolean; reviewId?:string|null; review: Review | null };
 
 export default function RoutineReview({ routine, onClose }: { routine: Routine; onClose: () => void }) {
-  const { byId, reloadRoutines } = useApp();
+  const { user, byId, reloadRoutines } = useApp();
   const [data, setData] = useState<Data | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [consent, setConsent] = useState(false);
@@ -40,13 +40,21 @@ export default function RoutineReview({ routine, onClose }: { routine: Routine; 
     const weight = target.targetWeightKg == null ? '' : ' at ' + Number(fromKg(target.targetWeightKg, units).toFixed(2)) + ' ' + weightLabel(units);
     return target.targetSets + ' × ' + target.targetReps + weight;
   }
+  async function removeReview() {
+    if (!data?.reviewId || !window.confirm('Remove the saved coach review for this routine?')) return;
+    setBusy(true); setError('');
+    try {
+      await aiApi('/drafts/'+data.reviewId,'DELETE');
+      setData({...data,review:null,reviewId:null});
+    } catch(e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
   async function run(action: 'review' | 'apply' | 'undo') {
     if (busy || !data) return;
     setBusy(true); setError(''); setNotice('');
     try {
       if (action === 'review') {
-        const response = await aiApi<{ draft: { result: Review } }>(path + '/review', 'POST', { consent, stamp: data.stamp });
-        setData({ ...data, review: response.draft.result });
+        const response = await aiApi<{ draft: { id:string; result: Review } }>(path + '/review', 'POST', { consent, stamp: data.stamp });
+        setData({ ...data, reviewId:response.draft.id, review: response.draft.result });
       } else {
         await aiApi(path + '/' + action, 'POST', { revision: data.revision, stamp: data.stamp, exerciseIds: selected });
         await reloadRoutines();
@@ -63,9 +71,9 @@ export default function RoutineReview({ routine, onClose }: { routine: Routine; 
     {notice && <p role="status">{notice}</p>}
     {!data && !error && <p role="status">Checking recent workouts…</p>}
     {data && <>
-      {data.review ? <section><h3>Coach review</h3><p>{data.review.summary}</p></section> :
+      {data.review ? <section><h3>Coach review</h3><p>{data.review.summary}</p>{data.reviewId && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>void removeReview()}>Remove saved review</button>}</section> :
         <div className="stack"><label><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/> Share this routine, preferences and relevant logs with OpenAI for a review</label>
-          <button className="btn btn-ghost" disabled={!consent || busy} onClick={() => void run('review')}>Request AI review</button></div>}
+          <button className="btn btn-ghost" disabled={!consent || busy || !['pro','dev'].includes(user?.aiTier ?? 'regular')} onClick={() => void run('review')}>Request AI review</button>{!['pro','dev'].includes(user?.aiTier ?? 'regular') && <p className="hint">AI reviews require a Pro or Dev account.</p>}</div>}
       {data.rows.map(row => {
         const advice = data.review?.changes.find(c => c.exerciseId === row.exerciseId);
         return <article key={row.exerciseId} className="card card-pad">

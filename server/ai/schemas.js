@@ -11,9 +11,12 @@ export const exerciseSchema = obj({
   targetDurationSec: nullableNum(5,600), targetCardioMin: nullableNum(1,90),
   reason: str(500), loadReason: str(500),
 });
+const { exerciseId, targetWeightKg, loadReason, ...targets } = exerciseSchema.properties;
+const suggestedExercise = obj({ ...targets, name: str(100), equipment: { type: 'string', enum: EQUIPMENT.filter(e => e !== 'full_gym') },
+  variant: str(100), kind: { type: 'string', enum: ['strength','timed','cardio'] } });
 export const routineSchema = obj({
   title: str(100), explanation: str(1800), limitations: list(str(400),8),
-  days: { ...list(obj({ name: str(100), focus: str(300), exercises: { ...list(exerciseSchema,10), minItems:1 } }),6), minItems:1 },
+  days: { ...list(obj({ name: str(100), focus: str(300), exercises: { ...list(suggestedExercise,10), minItems:1 } }),6), minItems:1 },
 });
 export const adjustmentSchema = obj({
   summary: str(1200),
@@ -27,6 +30,7 @@ export function validateSchema(value, schema, path = 'response') {
   const types = Array.isArray(schema.type) ? schema.type : [schema.type];
   const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
   if (!types.includes(type) && !(types.includes('integer') && Number.isInteger(value))) invalid('Invalid AI ' + path);
+  if (schema.enum && !schema.enum.includes(value)) invalid('Invalid AI choice: ' + path);
   if (value === null) return;
   if (typeof value === 'number' && (!Number.isFinite(value) || value < schema.minimum || value > schema.maximum)) invalid('AI value out of range: ' + path);
   if (typeof value === 'string' && value.length > schema.maxLength) invalid('AI text too long: ' + path);

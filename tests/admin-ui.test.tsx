@@ -42,7 +42,7 @@ it('requires confirmation before discarding member edits and submits the origina
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(window.confirm).toHaveBeenCalled(); expect(screen.getByRole('dialog')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-  await waitFor(() => expect(adminApi).toHaveBeenCalledWith('/users/member', 'PATCH', { revision: 3, name: 'Corrected member', suspended: false, role: 'user' }));
+  await waitFor(() => expect(adminApi).toHaveBeenCalledWith('/users/member', 'PATCH', { revision: 3, aiTier:'regular', name: 'Corrected member', suspended: false, role: 'user' }));
   await screen.findByText('Changes saved.');
 });
 it('keeps protected owner controls read-only', async () => {
@@ -52,8 +52,11 @@ it('keeps protected owner controls read-only', async () => {
   await screen.findByText('Example member');
   fireEvent.click(screen.getByRole('button', { name: 'View member' }));
   await screen.findByRole('dialog');
-  expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Delete account permanently' })).toBeNull();
   expect((screen.getByLabelText('Suspend account access') as HTMLInputElement).closest('fieldset')?.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('AI account type'), {target:{value:'dev'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
+  await waitFor(()=>expect(adminApi).toHaveBeenCalledWith('/users/owner','PATCH',{revision:3,aiTier:'dev'}));
 });
 it('creates a shared exercise with a valid category and MET through the editor', async () => {
   history.replaceState(null, '', '/admin#exercises');

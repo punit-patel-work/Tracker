@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
+import { deleteAccount } from '../delete-account.js';
 import bcrypt from 'bcryptjs';
 import { User, Session, Exercise, Routine, AdminAudit } from '../models.js';
 import { requireAuth, requireAdmin, issueToken } from '../auth.js';
@@ -22,9 +23,9 @@ function revision(req, doc) {
   if (req.body?.revision !== (doc.__v ?? 0)) throw Object.assign(new Error('This record changed. Refresh before saving.'), { status: 409 });
 }
 const userView = (u) => ({ id: String(u._id), name: u.name, email: u.email, username: u.username ?? '', role: u.role ?? 'user',
-  isOwner: !!u.isOwner, suspended: !!u.suspended, emailVerified: !!u.emailVerified, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+  aiTier: u.aiTier ?? 'regular', isOwner: !!u.isOwner, suspended: !!u.suspended, emailVerified: !!u.emailVerified, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
   units: u.units, goal: u.goal, timeZone: u.timeZone, revision: u.__v ?? 0 });
-const userFields = 'name email username role isOwner suspended emailVerified createdAt lastLoginAt units goal timeZone __v';
+const userFields = 'name email username role aiTier isOwner suspended emailVerified createdAt lastLoginAt units goal timeZone __v';
 const view = (doc) => { const { _id, __v, ...rest } = doc; return { ...rest, id: String(_id), revision: __v ?? 0 }; };
 const sessionView = (s) => ({ ...view(s), user: s.user?.email ? userView(s.user) : s.user,
   entries: (s.entries ?? []).map(({ exercise, ...e }) => ({ ...e, exerciseId: String(exercise) })) });
@@ -81,8 +82,9 @@ router.post('/users', async (req, res) => {
   const role = req.body.role ?? 'user';
   if (!['user', 'admin'].includes(role)) invalid('Invalid role');
   if (role === 'admin' && !req.user.isOwner) return res.status(403).json({ error: 'Only the owner can create administrators' });
+  const aiTier = validateTier(req.body.aiTier ?? 'regular');
   let u;
-  try { u = await User.create({ name, email, username, role, passwordHash: await bcrypt.hash(password, 12), timeZone: req.timeZone }); }
+  try { u = await User.create({ name, email, username, role, aiTier, passwordHash: await bcrypt.hash(password, 12), timeZone: req.timeZone }); }
   catch (err) { if (err.code === 11000) return res.status(409).json({ error: 'Email or username already exists' }); throw err; }
   await audit(req, 'user.create', u._id, `Created ${role} account for ${email}`);
   res.status(201).json({ user: userView(u) });
@@ -100,8 +102,12 @@ router.get('/users/:id', async (req, res) => {
 router.patch('/users/:id', async (req, res) => {
   const u = await User.findById(req.params.id);
   if (!u) return res.status(404).json({ error: 'User not found' });
-  manageable(req, u); revision(req, u);
+  const ownerTierOnly = req.user.isOwner && String(req.user._id) === String(u._id) &&
+    req.body.aiTier !== undefined && Object.keys(req.body).every(key => ['aiTier', 'revision'].includes(key));
+  if (!ownerTierOnly) manageable(req, u);
+  revision(req, u);
   const changes = {};
+  if (req.body.aiTier !== undefined) changes.aiTier = validateTier(req.body.aiTier);
   if (req.body.name !== undefined) changes.name = text(req.body.name, 'Name');
   if (req.body.role !== undefined) {
     if (!req.user.isOwner) return res.status(403).json({ error: 'Only the owner can change administrator access' });
@@ -110,10 +116,23 @@ router.patch('/users/:id', async (req, res) => {
   }
   if (req.body.suspended !== undefined) { if (typeof req.body.suspended !== 'boolean') invalid('Invalid account status'); changes.suspended = req.body.suspended; }
   if (!Object.keys(changes).length) invalid('No supported changes');
-  const result = await User.findOneAndUpdate({ _id: u._id, __v: u.__v }, { $set: changes, $inc: { __v: 1, sessionVersion: 1 } }, { returnDocument: 'after', runValidators: true });
+  const result = await User.findOneAndUpdate({ _id: u._id, __v: u.__v }, { $set: changes, $inc: { __v: 1, sessionVersion: Object.keys(changes).some(k => k !== 'aiTier' && changes[k] !== u[k]) ? 1 : 0 } }, { returnDocument: 'after', runValidators: true });
   if (!result) return res.status(409).json({ error: 'User changed. Refresh and try again.' });
   await audit(req, 'user.update', u._id, `${u.email}: ${JSON.stringify(changes)}`);
   res.json({ user: userView(result) });
+});
+function validateTier(value) {
+  if (!['regular', 'pro', 'dev'].includes(value)) invalid('Choose Regular, Pro or Dev.');
+  return value;
+}
+router.delete('/users/:id', async (req, res) => {
+  const u = await User.findById(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  manageable(req, u);
+  revision(req, u);
+  await deleteAccount(u);
+  await audit(req, 'user.delete', u._id, 'Deleted member account');
+  res.json({ ok: true });
 });
 router.post('/users/:id/revoke', async (req, res) => {
   const u = await User.findById(req.params.id);

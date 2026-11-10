@@ -7,6 +7,7 @@ export const AiPreferences = model('AiPreferences', new Schema({
 export const AiDraft = model('AiDraft', new Schema({
   user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   key: { type: String, required: true }, task: { type: String, required: true },
+  hiddenAt: { type: Date, default: null },
   result: Object, context: Object, savedDays: { type: [Number], default: [] }, model: String, usage: Object, costUsd: { type: Number, default: 0 },
 }, { timestamps: true }).index({ user: 1, key: 1 }, { unique: true }).index({ user: 1, createdAt: -1 }));
 export const AiUsage = model('AiUsage', new Schema({

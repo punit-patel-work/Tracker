@@ -133,3 +133,20 @@ test('own-password changes revoke other cookies without logging passwords', asyn
   const log = await call('/admin/audit'); assert.doesNotMatch(JSON.stringify(log.data), /Replacement-test-password|Test-admin-password/);
   assert.equal((await call('/admin/system')).status, 200);
 });
+
+test('AI tags are admin-managed and account deletion removes owned data while protecting the owner', async () => {
+  const target = await User.create({name:'Delete fixture',email:'delete-fixture@test.invalid',passwordHash:'unused'});
+  await call('/me','PATCH',{aiTier:'dev'},target);
+  assert.equal((await User.findById(target.id)).aiTier,'regular');
+  const path='/admin/users/'+target.id;
+  const edit=await call(path,'PATCH',{revision:0,aiTier:'pro'});
+  assert.equal(edit.data.user.aiTier,'pro');
+  assert.equal((await call(path,'DELETE',{revision:0})).status,409);
+  assert.equal((await call(path,'DELETE',{revision:1},target)).status,403);
+  assert.equal((await call('/admin/users/'+owner.id,'DELETE',{revision:0})).status,400);
+  const own=await Routine.create({user:target._id,name:'Private routine'});
+  assert.equal((await call(path,'DELETE',{revision:1})).status,200);
+  assert.equal(await User.findById(target.id),null);
+  assert.equal(await Routine.findById(own.id),null);
+  assert.ok(await AdminAudit.exists({action:'user.delete',target:target.id}));
+});

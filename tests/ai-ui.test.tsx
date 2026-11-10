@@ -8,7 +8,7 @@ const state=vi.hoisted(()=>({reload:vi.fn(),exercises:[
  {id:'a',name:'Bench press',equipment:'Barbell',type:'strength',primaryMuscles:['Chest'],isTimed:false,howToUrl:''},
  {id:'b',name:'Dumbbell press',equipment:'Dumbbell',type:'strength',primaryMuscles:['Chest'],isTimed:false,howToUrl:''},
 ]}));
-vi.mock('../src/state/app',()=>({useApp:()=>({user:{id:'user',goal:'general',units:'metric',weeklyTarget:3},exercises:state.exercises,byId:new Map(state.exercises.map(e=>[e.id,e])),reloadRoutines:state.reload,offline:false})}));
+vi.mock('../src/state/app',()=>({useApp:()=>({user:{id:'user',aiTier:'pro',goal:'general',units:'metric',weeklyTarget:3},exercises:state.exercises,byId:new Map(state.exercises.map(e=>[e.id,e])),reloadRoutines:state.reload,offline:false})}));
 vi.mock('../src/lib/ai',async importOriginal=>({...await importOriginal<typeof import('../src/lib/ai')>(),aiApi:vi.fn()}));
 vi.mock('../src/lib/api',()=>({api:{sessions:vi.fn().mockResolvedValue({sessions:[]})},ApiError:class extends Error{}}));
 const draft:AiDraft={id:'draft',task:'routine',createdAt:'2026-11-03T00:00:00Z',model:'test',costUsd:.01,result:{title:'Training plan',explanation:'Based on your preferences.',limitations:[],days:[{name:'Day A',focus:'Full body',estimatedMinutes:30,exercises:[{exerciseId:'a',targetSets:3,targetReps:8,targetWeightKg:40,restSec:90,targetDurationSec:null,targetCardioMin:null,reason:'Matches the plan.',loadReason:'Recent logged weight.'}]}]}};
@@ -70,4 +70,19 @@ it('alternatives show a useful empty state and can be dismissed by keyboard',asy
  render(<ExerciseAlternatives sourceId="a" exclude={['a']} onPick={vi.fn()} onClose={close}/>);
  await screen.findByText(/No maintained alternatives/);
  fireEvent.keyDown(document,{key:'Escape'});expect(close).toHaveBeenCalled();
+});
+
+it('requires confirmation of an unresolved movement before a day can be saved',async()=>{
+ const result=structuredClone(draft.result) as any;
+ const item=result.days[0].exercises[0];item.exerciseId='';item.targetWeightKg=null;
+ item.match={name:'DB press',equipment:'dumbbell',kind:'strength',variant:'',options:['b']};
+ render(<RoutinePreview draft={{...draft,result}} onSaved={vi.fn()}/>);
+ const save=screen.getByRole('button',{name:'Save this session to routines'}) as HTMLButtonElement;
+ expect(save.disabled).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'Use Dumbbell press'}));
+ expect(save.disabled).toBe(false);
+ fireEvent.click(save);
+ await waitFor(()=>expect(aiApi).toHaveBeenCalledWith('/drafts/draft/save','POST',expect.objectContaining({
+   exercises:[expect.objectContaining({exerciseId:'b',targetWeightKg:null})]
+ })));
 });

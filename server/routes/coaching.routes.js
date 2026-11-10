@@ -60,9 +60,9 @@ export function coachingRoutes(request) {
   router.get('/routines/:id', async (req, res) => {
     const routine = await ownedRoutine(req, req.params.id);
     const ctx = await routineContext(req, routine);
-    const saved = await AiDraft.findOne({ user: req.user._id, task: 'adjustment', 'context.stamp': ctx.stamp }).select('result').lean();
+    const saved = await AiDraft.findOne({ user: req.user._id, task: 'adjustment', hiddenAt:null, 'context.stamp': ctx.stamp }).select('result').lean();
     res.json({ rows: ctx.rows, stamp: ctx.stamp, revision: routine.__v, canUndo: routine.coachingUndo?.revision === routine.__v,
-      review: saved?.result ?? null });
+      reviewId:saved ? String(saved._id) : null, review: saved?.result ?? null });
   });
   router.post('/routines/:id/review', async (req, res) => {
     requireConsent(req);

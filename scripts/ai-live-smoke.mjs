@@ -16,7 +16,7 @@ let db;
 try{
  db=await MongoMemoryServer.create();await mongoose.connect(db.getUri());
  await Promise.all([User,Exercise,Session,...Object.values(aiModels)].map(m=>m.init()));
- const user=await User.create({name:'Synthetic test user',email:'synthetic@example.invalid',passwordHash:'unused',weeklyTarget:3});
+ const user=await User.create({name:'Synthetic test user',aiTier:'dev',email:'synthetic@example.invalid',passwordHash:'unused',weeklyTarget:3});
  await Exercise.insertMany(CATALOG.map(e=>({...e,_id:undefined})));
  const lift=await Exercise.findOne({slug:'dumbbell-flat-bench-press'});
  const session=await Session.create({user:user._id,name:'Synthetic training session',date:todayFor('UTC'),status:'completed',bodyWeightKg:75,

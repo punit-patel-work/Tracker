@@ -6,7 +6,7 @@ import { useApp } from '../state/app';
 import { api } from '../lib/api';
 import { aiApi,equipmentLabels,type TrainingPreferences,type Bootstrap,type AiDraft,type RoutineResult,type InsightResult,type AiExercise } from '../lib/ai';
 import { fromKg,toKg,weightLabel,num } from '../lib/format';
-import type { Session } from '../lib/types';
+import type { Exercise, Session } from '../lib/types';
 import ExerciseAlternatives from '../components/ExerciseAlternatives';
 import { useExerciseUnits } from '../lib/exerciseUnits';
 import ExercisePicker from '../components/ExercisePicker';
@@ -31,6 +31,7 @@ export default function AiCoach() {
   const [busy,setBusy]=useState(false),[consent,setConsent]=useState(false),[loading,setLoading]=useState(true);
   const [sessions,setSessions]=useState<Session[]>([]),[sessionId,setSessionId]=useState(''),[topic,setTopic]=useState('Explain exercise selection and rep targets');
   const [retry,setRetry]=useState(0),[excluding,setExcluding]=useState(false);
+  const [moreSaved,setMoreSaved]=useState(true);
   const [toolBusy, setToolBusy] = useState(false);
   const stepHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { stepHeading.current?.focus(); }, [step]);
@@ -61,14 +62,34 @@ export default function AiCoach() {
       const path=tab==='routine'?'/routine-draft':tab==='review'?'/weekly-review':'/workout-explanation';
       const body=tab==='routine'?{preferences:prefs,consent}:tab==='review'?{consent}:{consent,sessionId,topic};
       const result=await aiApi<{draft:AiDraft;cached:boolean}>(path,'POST',body);
-      if(alive.current){setDraft(result.draft);setBoot(b=>b?{...b,drafts:[result.draft,...b.drafts.filter(d=>d.id!==result.draft.id)].slice(0,8)}:b);setNotice(result.cached?'Your saved suggestion is ready.':'Your suggestion is ready to review.');}
+      if(alive.current){setMoreSaved(true);setDraft(result.draft);setBoot(b=>b?{...b,drafts:[result.draft,...b.drafts.filter(d=>d.id!==result.draft.id)].slice(0,8)}:b);setNotice(result.cached?'Your saved suggestion is ready.':'Your suggestion is ready to review.');}
     }catch(e){if(alive.current)setError((e as Error).message);}finally{if(alive.current)setBusy(false);}
   };
   const savePrefs=async()=>{if(!prefs)return;setBusy(true);setError('');try{await aiApi('/preferences','PUT',prefs);setNotice('Training preferences saved.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
   const selectTab=(t:CoachTool)=>{if (t === tab) return; setTab(t);setDraft(null);setError('');setNotice('');};
+  async function removeSuggestion(id:string) {
+    if (!window.confirm('Remove this suggestion from your saved list? Your saved routines will stay available.')) return;
+    setBusy(true); setError('');
+    try {
+      await aiApi('/drafts/'+id,'DELETE');
+      setBoot(b => b && ({...b,drafts:b.drafts.filter(d=>d.id!==id)}));
+      try { sessionStorage.removeItem('gt.aiDraft.'+user?.id+'.'+id); } catch {}
+      const fresh = await aiApi<Bootstrap>('/bootstrap');
+      setBoot(fresh); setMoreSaved(true);
+    } catch(err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+  async function olderSuggestions() {
+    if (!boot?.drafts.length) return;
+    setBusy(true); setError('');
+    try {
+      const page=await aiApi<{drafts:AiDraft[];more:boolean}>('/drafts?before='+boot.drafts[boot.drafts.length-1].id);
+      setBoot(b=>b && ({...b,drafts:[...b.drafts,...page.drafts]})); setMoreSaved(page.more);
+    } catch(err) {setError((err as Error).message);} finally {setBusy(false);}
+  }
   if(loading)return <div className="card card-pad" role="status">Loading AI Coach…</div>;
   if(!boot||!prefs)return <div className="card card-pad"><p role="alert">{error||'Could not load AI Coach.'}</p><button className="btn btn-primary" onClick={()=>setRetry(x=>x+1)}>Try again</button></div>;
-  const disabled=busy||offline||!boot.enabled||!boot.configured;
+  const tier=boot.aiTier ?? user?.aiTier ?? 'regular';
+  const disabled=busy||offline||!boot.enabled||!boot.configured||tier==='regular';
   const units=user?.units??'metric';
   return <div className="stack ai-page">
     <header className="page-head coach-heading"><h1 className="page-title"><I.Sparkles size={24}/> AI Coach</h1></header>
@@ -82,13 +103,15 @@ export default function AiCoach() {
         {tools.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
       </select>
     </div>
+    <p className="hint">{tier==='regular' ? 'Regular account · AI generation requires Pro or Dev.' : tier==='pro' ? 'Pro · 4 generation requests per 24 hours and 25 per 7 days. Reusing a saved answer is free.' : 'Dev · No personal request limit.'}</p>
     {(!boot.enabled||!boot.configured||offline)&&<p className="offline-note">{offline?'Connect to use AI assistance.':!boot.configured?'AI is not configured on the server.':'AI assistance is paused. Saved suggestions remain available.'}</p>}
     {error&&<p className="form-error" role="alert">{error}</p>}{notice&&<p className="ai-notice" role="status">{notice}</p>}
     {tab === 'planner' ? <WeeklyPlanner/> : tab === 'question' ? <CoachQuestion enabled={!disabled} onBusyChange={setToolBusy} onAnswer={answer => {
       setBoot(b => b && ({ ...b, drafts: [answer, ...b.drafts.filter(d => d.id !== answer.id)].slice(0,8) }));
-      setTab('saved'); setDraft(answer); setError(''); setNotice('');
+      setMoreSaved(true); setTab('saved'); setDraft(answer); setError(''); setNotice('');
     }}/> : tab==='saved' ? !draft && <section className="card card-pad"><h2>Saved suggestions</h2><p className="muted">Reopen a suggestion without generating it again. Historical suggestions may need updating as your training changes.</p>
-      {!boot.drafts.length?<p>No suggestions yet. Start with your training preferences.</p>:<div className="stack">{boot.drafts.map(d=><button className="ai-saved" key={d.id} onClick={()=>setDraft(d)}><strong>{d.task==='routine'?(d.result as RoutineResult).title:d.task==='review'?'Weekly review':d.task==='question'?(d.question || 'Coaching question'):'Workout explanation'}</strong><span>{new Date(d.createdAt).toLocaleString()}</span></button>)}</div>}</section>
+      {!boot.drafts.length?<p>No suggestions yet. Start with your training preferences.</p>:<div className="stack">{boot.drafts.map(d=><div className="saved-suggestion-row" key={d.id}><button disabled={busy} className="ai-saved" onClick={()=>setDraft(d)}><strong>{d.task==='routine'?(d.result as RoutineResult).title:d.task==='review'?'Weekly review':d.task==='question'?(d.question || 'Coaching question'):'Workout explanation'}</strong><span>{new Date(d.createdAt).toLocaleString()}</span></button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>void removeSuggestion(d.id)}>Remove</button></div>)}
+        {moreSaved && boot.drafts.length>=8 && <button className="btn btn-ghost" disabled={busy} onClick={()=>void olderSuggestions()}>Show older suggestions</button>}</div>}</section>
     :!draft&&<section className={tab === 'routine' ? 'card coach-builder' : 'card card-pad stack'}>
       {tab==='routine'?<>
         <header className="coach-step" aria-live="polite">
@@ -132,7 +155,7 @@ export default function AiCoach() {
     </section>}
     {busy&&<div className="ai-progress" role="status"><span className="ai-dot"/>Preparing your suggestion. Detailed plans can take a minute. Your existing workouts stay as they are.</div>}
     {draft&&<><div className="ai-result-head"><span>Generated {new Date(draft.createdAt).toLocaleString()} · Review before applying</span><button className="btn btn-ghost btn-sm" onClick={()=>setDraft(null)}>{tab==='saved'?'Back to saved suggestions':'Adjust request'}</button></div>
-      {draft.task==='routine'?<RoutinePreview key={draft.id} draft={draft} onSaved={async()=>{await reloadRoutines();const next=await aiApi<Bootstrap>('/bootstrap');setBoot(next);}}/>:<Insight draft={draft}/>}</>}
+      {draft.task==='routine'?<RoutinePreview key={draft.id} draft={draft} onSaved={async()=>{await reloadRoutines();const next=await aiApi<Bootstrap>('/bootstrap');setBoot(next);setMoreSaved(true);}}/>:<Insight draft={draft}/>}</>}
     {excluding&&<ExercisePicker multi exclude={prefs.excludedExerciseIds} onPick={e=>setPrefs(p=>p&&p.excludedExerciseIds.length<100?{...p,excludedExerciseIds:[...new Set([...p.excludedExerciseIds,e.id])]}:p)} onClose={()=>setExcluding(false)}/>}
 
   </div>;
@@ -154,29 +177,45 @@ export function RoutinePreview({draft,onSaved}:{draft:AiDraft;onSaved:()=>Promis
   const [plan,setPlan]=useState(()=>{try{const cached=JSON.parse(sessionStorage.getItem(editKey)??'null');if(cached?.days)return cached as RoutineResult;}catch{}return structuredClone(draft.result as RoutineResult);});
   useEffect(()=>{try{sessionStorage.setItem(editKey,JSON.stringify(plan));}catch{}},[editKey,plan]);
   const [busy,setBusy]=useState<number|null>(null),[saved,setSaved]=useState<number[]>(draft.savedDays??[]),[error,setError]=useState('');
+  const [resolve,setResolve]=useState<{day:number;index:number}|null>(null);
   const [swap,setSwap]=useState<{day:number;index:number}|null>(null),[dirty,setDirty]=useState(false);
   useEffect(()=>{const warn=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',warn);return ()=>window.removeEventListener('beforeunload',warn);},[dirty]);
   const update=(d:number,i:number,p:Partial<AiExercise>)=>{setDirty(true);setPlan(old=>({...old,days:old.days.map((day,j)=>j===d?{...day,exercises:day.exercises.map((e,k)=>k===i?{...e,...p}:e)}:day)}));};
   const save=async(index:number)=>{
     setBusy(index);setError('');
     const day=plan.days[index];
-    try{await aiApi('/drafts/'+draft.id+'/save','POST',{dayIndex:index,name:day.name,note:day.focus,exercises:day.exercises});setSaved(s=>[...s,index]);setDirty(false);await onSaved();}
+    try{await aiApi('/drafts/'+draft.id+'/save','POST',{dayIndex:index,name:day.name,note:day.focus,exercises:day.exercises.map(({match,...item})=>item)});setSaved(s=>[...s,index]);setDirty(false);await onSaved();}
     catch(e){setError((e as Error).message);}finally{setBusy(null);}
   };
+  function chooseMatch(d:number,i:number,id:string, created?:Exercise) {
+    const item = plan.days[d].exercises[i];
+    const ex = created ?? byId.get(id);
+    if (!ex) return;
+    const cardio = ex.type === 'cardio';
+    update(d,i,{ exerciseId:id,match:undefined,targetWeightKg:null,targetSets:cardio?1:item.targetSets,
+      targetReps:cardio||ex.isTimed?0:item.targetReps||8,targetDurationSec:ex.isTimed?item.targetDurationSec||30:null,
+      targetCardioMin:cardio?item.targetCardioMin||10:null,loadReason:'Choose a starting load for the exercise you selected.' });
+  }
   const exerciseUnits = useExerciseUnits();
   return <div className="stack"><section className="card card-pad"><h2>{plan.title}</h2><p>{plan.explanation}</p>{plan.limitations.length>0&&<details><summary>Assumptions and limitations</summary><ul>{plan.limitations.map((s,i)=><li key={i}>{s}</li>)}</ul></details>}</section>
     {error&&<p role="alert" className="form-error">{error}</p>}
     {plan.days.map((day,d)=><section className="card card-pad stack" key={d}><div className="ai-day-heading"><label className="field">Session name<input className="input" value={day.name} maxLength={100} disabled={saved.includes(d)} onChange={e=>{setDirty(true);setPlan(p=>({...p,days:p.days.map((x,i)=>i===d?{...x,name:e.target.value}:x)}));}}/></label><span>{day.estimatedMinutes??'—'} min estimated at generation</span></div><p>{day.focus}</p>
-      {day.exercises.map((item,i)=>{const ex=byId.get(item.exerciseId);const units=exerciseUnits.forExercise(item.exerciseId);return <div className="ai-exercise" key={item.exerciseId}><div className="ai-exercise-head"><div><h3>{ex?.name??'Exercise unavailable'}</h3><small>{ex?.equipment} · {ex?.primaryMuscles?.join(', ')}</small></div><button className="btn btn-ghost btn-sm" disabled={saved.includes(d)} onClick={()=>setSwap({day:d,index:i})}>Alternatives</button></div><p>{item.reason}</p>
-        <fieldset disabled={saved.includes(d)} className="ai-targets ai-fieldset">
+      {day.exercises.map((item,i)=>{const ex=byId.get(item.exerciseId);const units=exerciseUnits.forExercise(item.exerciseId);return <div className="ai-exercise" key={i}><div className="ai-exercise-head"><div><h3>{item.match?.name??ex?.name??'Exercise unavailable'}</h3><small>{ex?.equipment} · {ex?.primaryMuscles?.join(', ')}</small></div><button className="btn btn-ghost btn-sm" disabled={saved.includes(d)} onClick={()=>item.match?setResolve({day:d,index:i}):setSwap({day:d,index:i})}>{item.match?'Choose or create exercise':'Alternatives'}</button></div><p>{item.reason}</p>
+        {item.match && <div className="stack"><p>Confirm this movement · {item.match.equipment} {item.match.variant}</p>
+          {item.match.options.filter(id=>byId.has(id)&&!day.exercises.some(e=>e.exerciseId===id)).map(id=><button className="btn btn-ghost btn-sm" key={id} disabled={busy!==null||saved.includes(d)} onClick={()=>chooseMatch(d,i,id)}>Use {byId.get(id)?.name}</button>)}</div>}
+        <fieldset disabled={saved.includes(d)||!!item.match} className="ai-targets ai-fieldset">
           {ex?.type==='cardio'?<Target label="Minutes" value={item.targetCardioMin} min={1} max={90} onChange={v=>update(d,i,{targetCardioMin:v})}/>:<>
           <Target label="Sets" value={item.targetSets} min={1} max={8} onChange={v=>update(d,i,{targetSets:v??0})}/>
           {ex?.isTimed?<Target label="Hold (seconds)" value={item.targetDurationSec} min={5} max={600} onChange={v=>update(d,i,{targetDurationSec:v})}/>:<Target label="Reps" value={item.targetReps} min={1} max={50} onChange={v=>update(d,i,{targetReps:v??0})}/>}
           <Target label={(ex?.isBodyweight?'Added weight':'Weight')+' ('+weightLabel(units)+')'} value={item.targetWeightKg==null?null:Number(fromKg(item.targetWeightKg,units).toFixed(1))} min={0} max={2200} onChange={v=>update(d,i,{targetWeightKg:v==null?null:toKg(v,units)})}/><Target label="Rest (seconds)" value={item.restSec} min={0} max={600} onChange={v=>update(d,i,{restSec:v??0})}/></>}
         </fieldset><p className="hint">{item.loadReason}</p>{ex?.howToUrl&&<a href={ex.howToUrl} target="_blank" rel="noreferrer">Find a technique demonstration ↗</a>}
       </div>;})}
-      <button className="btn btn-primary" disabled={busy!==null||saved.includes(d)} onClick={()=>void save(d)}>{saved.includes(d)?'Saved to routines':busy===d?'Saving…':'Save this session to routines'}</button>{saved.includes(d)&&<p className="hint">This session is saved. Make further changes in Routines.</p>}
+      <button className="btn btn-primary" disabled={busy!==null||saved.includes(d)||day.exercises.some(e=>!e.exerciseId)} onClick={()=>void save(d)}>{saved.includes(d)?'Saved to routines':busy===d?'Saving…':'Save this session to routines'}</button>{saved.includes(d)&&<p className="hint">This session is saved. Make further changes in Routines.</p>}
     </section>)}
+    {resolve && <ExercisePicker suggestion={plan.days[resolve.day].exercises[resolve.index].match}
+      exclude={[...plan.days[resolve.day].exercises.map(e=>e.exerciseId),...(draft.constraints?.excludedExerciseIds??[])]}
+      allowedEquipment={draft.constraints?.equipment} onClose={()=>setResolve(null)}
+      onPick={ex=>chooseMatch(resolve.day,resolve.index,ex.id,ex)}/>}
     {swap&&<ExerciseAlternatives sourceId={plan.days[swap.day].exercises[swap.index].exerciseId} exclude={plan.days[swap.day].exercises.map(e=>e.exerciseId)} onClose={()=>setSwap(null)} onPick={ex=>update(swap.day,swap.index,{exerciseId:ex.id,targetWeightKg:null,targetSets:ex.type==='cardio'?1:3,targetReps:ex.type==='cardio'||ex.isTimed?0:8,targetDurationSec:ex.isTimed?30:null,targetCardioMin:ex.type==='cardio'?10:null,reason:'Alternative selected by you.',loadReason:'Choose a starting load for this movement; the previous exercise’s load was cleared.'})}/>}
   </div>;
 }

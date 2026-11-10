@@ -10,6 +10,7 @@ export interface WeighIn {
 }
 
 export interface User {
+  aiTier?: 'regular' | 'pro' | 'dev';
   username?: string | null;
   role?: 'user' | 'admin';
   isOwner?: boolean;

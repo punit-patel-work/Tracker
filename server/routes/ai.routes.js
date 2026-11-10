@@ -12,10 +12,14 @@ import { generate, settings, budget, serialize, openaiRequest } from '../ai/serv
 export function createAiRouter({request=openaiRequest}={}) {
 const router=Router();
 router.use(requireAuth,(_req,res,next)=>{res.set('Cache-Control','no-store');next();});
+router.post(['/routine-draft','/weekly-review','/workout-explanation','/coaching/question','/coaching/routines/:id/review'],(req,res,next)=>{
+  if (!['pro','dev'].includes(req.user.aiTier)) return res.status(403).json({error:'AI generation requires a Pro or Dev account.'});
+  next();
+});
 router.use('/coaching', coachingRoutes(request));
 router.get('/bootstrap',async(req,res)=>{
-  const [prefs,config,drafts]=await Promise.all([AiPreferences.findOne({user:req.user._id}).lean(),settings(),AiDraft.find({user:req.user._id,task:{$ne:'adjustment'}}).sort({createdAt:-1}).limit(8).lean()]);
-  res.json({preferences:prefs?.preferences??null,enabled:config.enabled,configured:!!process.env.OPENAI_API_KEY,equipment:EQUIPMENT,drafts:drafts.map(serialize)});
+  const [prefs,config,drafts]=await Promise.all([AiPreferences.findOne({user:req.user._id}).lean(),settings(),AiDraft.find({user:req.user._id,hiddenAt:null,task:{$ne:'adjustment'}}).sort({_id:-1}).limit(8).lean()]);
+  res.json({aiTier:req.user.aiTier??'regular',preferences:prefs?.preferences??null,enabled:config.enabled,configured:!!process.env.OPENAI_API_KEY,equipment:EQUIPMENT,drafts:drafts.map(serialize)});
 });
 router.put('/preferences',async(req,res)=>{
   const preferences=preferencesInput(req.body);
@@ -48,7 +52,6 @@ router.post('/routine-draft',async(req,res)=>{
   if(req.body?.consent!==true) invalid('Confirm sharing relevant training data with OpenAI to generate a suggestion');
   const preferences=preferencesInput(req.body.preferences??{});
   const context=await buildContext(req.user,req.timeZone,preferences,'routine');
-  if(!context.candidates.length) invalid('No exercises match your equipment and exclusions');
   await AiPreferences.findOneAndUpdate({user:req.user._id},{$set:{preferences}},{upsert:true});
   res.json(await generate({user:req.user,task:'routine',context,request}));
 });
@@ -65,9 +68,22 @@ router.post('/workout-explanation',async(req,res)=>{
   const context=await buildContext(req.user,req.timeZone,null,'explanation',sessionId);context.topic=topic;
   res.json(await generate({user:req.user,task:'explanation',context,request}));
 });
+router.delete('/drafts/:id',async(req,res)=>{
+  const draftId = id(req.params.id);
+  const result = await AiDraft.updateOne({ _id:draftId, user:req.user._id },
+    { $set:{ hiddenAt:new Date(), key:'hidden:'+draftId } });
+  if (!result.matchedCount) return res.status(404).json({error:'Suggestion not found'});
+  res.json({ok:true});
+});
+router.get('/drafts',async(req,res)=>{
+  const filter = { user:req.user._id, hiddenAt:null, task:{ $ne:'adjustment' } };
+  if (req.query.before) filter._id = { $lt:id(req.query.before) };
+  const rows = await AiDraft.find(filter).sort({_id:-1}).limit(9).lean();
+  res.json({ drafts:rows.slice(0,8).map(serialize), more:rows.length>8 });
+});
 router.post('/drafts/:id/save',async(req,res)=>{
   id(req.params.id);
-  const draft=await AiDraft.findOne({_id:req.params.id,user:req.user._id,task:'routine'}).lean();
+  const draft=await AiDraft.findOne({_id:req.params.id,user:req.user._id,hiddenAt:null,task:'routine'}).lean();
   if(!draft) return res.status(404).json({error:'Routine draft not found'});
   const index=number(req.body.dayIndex,'Day',0,draft.result.days.length-1,true);
   const name=text(req.body.name,'Routine name');
@@ -77,15 +93,18 @@ router.post('/drafts/:id/save',async(req,res)=>{
   const entries=routineInput(list);
   const byId=await accessibleExercises(entries.map(e=>String(e.exercise)),req.user._id);
   if([...byId.values()].some(e=>e.archived)) invalid('An exercise was archived. Choose another before saving');
+  const preferences = draft.context?.preferences;
   for(const e of list){
     const ex=byId.get(e.exerciseId);
+    if (preferences && (preferences.excludedExerciseIds.includes(e.exerciseId) || !available(ex,preferences.equipment))) invalid('Choose an exercise compatible with the equipment and exclusions for this plan');
     if(ex.type==='cardio' ? !(e.targetCardioMin>0) : ex.isTimed ? !(e.targetDurationSec>0) : !(e.targetReps>0)) invalid('Complete the exercise targets before saving');
   }
   const source=req.params.id+':'+index;
   const routine=await Routine.findOneAndUpdate({user:req.user._id,aiSource:source},{$setOnInsert:{
     name,note:text(req.body.note??'','Routine note',2000,false),exercises:entries,aiSource:source,
   }},{upsert:true,returnDocument:'after'}).lean();
-  await AiDraft.updateOne({_id:draft._id,user:req.user._id},{$addToSet:{savedDays:index}});
+  await AiDraft.updateOne({_id:draft._id,user:req.user._id,savedDays:{$ne:index}},
+    {$addToSet:{savedDays:index},$set:{[`result.days.${index}.exercises`]:list,[`result.days.${index}.name`]:name}});
   res.json({routineId:String(routine._id),name:routine.name});
 });
 router.get('/admin',requireAdmin,async(req,res)=>{

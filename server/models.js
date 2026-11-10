@@ -13,6 +13,7 @@ const UserSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
     username: { type: String, lowercase: true, trim: true },
+    aiTier: { type: String, enum: ['regular', 'pro', 'dev'], default: 'regular' },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     isOwner: { type: Boolean, default: false },
     suspended: { type: Boolean, default: false },
@@ -68,6 +69,7 @@ UserSchema.methods.toPublic = function toPublic() {
     id: this._id,
     email: this.email,
     username: this.username ?? null,
+    aiTier: this.aiTier ?? 'regular',
     role: this.role ?? 'user',
     isOwner: !!this.isOwner,
     emailVerified: this.emailVerified,

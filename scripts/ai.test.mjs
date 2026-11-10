@@ -13,6 +13,7 @@ import {validateSchema,routineSchema} from '../server/ai/schemas.js';
 import {equipmentTags,alternativeCandidates,FAMILIES} from '../server/ai/catalog.js';
 import {CATALOG} from '../shared/catalog.js';
 import {todayFor} from '../server/validation.js';
+import {resolveSuggestions} from '../server/ai/routine-matching.js';
 import {buildContext} from '../server/ai/context.js';
 import {generate,estimatedCost,MAX_INPUT_BYTES} from '../server/ai/service.js';
 let db,server,base,user,other,owner,bench,dumbbell,cable,hold,cardio,privateEx,workout,calls=0,lastBody,mode='ok',waiter;
@@ -24,14 +25,13 @@ async function call(path,method='GET',body,who=user){
 }
 function output(body){
  const context=JSON.parse(body.input[1].content);
- const entry=id=>({exerciseId:id,targetSets:3,targetReps:10,targetWeightKg:50,restSec:90,targetDurationSec:null,targetCardioMin:null,reason:'Matches your goal.',loadReason:'Based on matching recent sets.'});
+ const entry=(ex,equipment,kind='strength')=>({name:ex.name,equipment,kind,variant:'',targetSets:3,targetReps:10,
+   restSec:90,targetDurationSec:null,targetCardioMin:null,reason:'Matches your goal.'});
  if(body.text.format.name==='routine_response'){
-  const ids=context.candidates.map(e=>e.exerciseId);
-  const normal=ids.includes(bench.id)?bench.id:ids[0];
   const entries=mode==='mixed'?[
-    entry(bench.id),{...entry(hold.id),targetReps:0,targetWeightKg:null,targetDurationSec:30},
-    {...entry(cardio.id),targetSets:1,targetReps:0,targetWeightKg:null,targetCardioMin:5},
-  ]:[entry(mode==='foreign'?privateEx.id:normal)];
+    entry(bench,'barbell'),{...entry(hold,'bodyweight','timed'),targetReps:0,targetDurationSec:30},
+    {...entry(cardio,'machine','cardio'),targetSets:1,targetReps:0,targetCardioMin:5},
+  ]:[entry(mode==='foreign'?privateEx:bench,'barbell')];
   if(mode==='too-heavy')entries[0].targetWeightKg=500;
   return {title:'One-day plan',explanation:'A practical training session.',limitations:[],days:[{name:'Session A',focus:'General training',exercises:entries}]};
  }
@@ -47,8 +47,8 @@ const provider=async body=>{
 before(async()=>{
  process.env.JWT_SECRET='ai-tests-only'; db=await MongoMemoryServer.create();await mongoose.connect(db.getUri());
  await Promise.all([User,Exercise,Routine,Session,...Object.values(models)].map(m=>m.init()));
- user=await User.create({name:'Member',email:'member@example.test',passwordHash:'not-real',weighIns:[{date:'2026-01-01',kg:80}]});
- other=await User.create({name:'Other',email:'other@example.test',passwordHash:'not-real'});
+ user=await User.create({name:'Member',aiTier:'dev',email:'member@example.test',passwordHash:'not-real',weighIns:[{date:'2026-01-01',kg:80}]});
+ other=await User.create({name:'Other',aiTier:'dev',email:'other@example.test',passwordHash:'not-real'});
  owner=await User.create({name:'Owner',email:'owner@example.test',passwordHash:'not-real',role:'admin'});
  const create=slug=>Exercise.create({...CATALOG.find(e=>e.slug===slug),_id:undefined});
  bench=await create('barbell-flat-bench-press');dumbbell=await create('dumbbell-flat-bench-press');cable=await create('standing-cable-chest-press');
@@ -78,12 +78,13 @@ test('catalog alternatives make zero provider calls and respect equipment, exclu
  assert.equal((await call('/ai/alternatives/'+privateEx.id)).status,404);
  assert.equal(calls,before);assert.ok(await models.AiAlternative.findOne({source:bench._id}));
 });
-test('routine context contains exact set-level history and omits account secrets and foreign exercises',async()=>{
+test('routine prompt carries relevant training evidence without the catalog or account secrets',async()=>{
  const r=await call('/ai/routine-draft','POST',{preferences:prefs,consent:true});
  assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(r.data.cached,false);
  const context=JSON.parse(lastBody.input[1].content);
- assert.equal(context.history[0].entries[0].sets[0].rpe,7);
- assert.equal(context.candidates.some(e=>e.exerciseId===privateEx.id),false);
+ assert.equal(context.recentExercises[0].rpe,7);
+ assert.equal(context.candidates,undefined);
+ assert.equal(r.data.draft.result.days[0].exercises[0].targetWeightKg,50);
  assert.doesNotMatch(JSON.stringify(context),/passwordHash|member@example|JWT_SECRET/);
  assert.equal(lastBody.store,false);assert.equal(lastBody.text.format.strict,true);
  const count=calls;
@@ -92,19 +93,20 @@ test('routine context contains exact set-level history and omits account secrets
  const otherDrafts=await call('/ai/bootstrap','GET',undefined,other);
  assert.equal(otherDrafts.data.drafts.length,0);
 });
-test('invalid exercise IDs and schema fields never become usable drafts',async()=>{
+test('unmatched suggestions stay unresolved and do not expose private exercise IDs',async()=>{
  mode='foreign';
  const r=await call('/ai/routine-draft','POST',{preferences:{...prefs,preferences:'foreign-test'},consent:true});
- assert.equal(r.status,502);assert.match(r.data.error,/validation/);
+ assert.equal(r.status,200);const unmatched=r.data.draft.result.days[0].exercises[0];
+ assert.equal(unmatched.exerciseId,'');assert.ok(!unmatched.match.options.includes(privateEx.id));
  assert.throws(()=>validateSchema({title:'bad'},routineSchema));
  mode='ok';
 });
-test('loads without matching history stay blank; implausible progression is removed',async()=>{
+test('unmatched loads stay blank and provider-supplied kg are rejected',async()=>{
  let r=await call('/ai/routine-draft','POST',{preferences:{...prefs,excludedExerciseIds:[bench.id],preferences:'no-history'},consent:true});
  assert.equal(r.status,200);assert.equal(r.data.draft.result.days[0].exercises[0].targetWeightKg,null);
  mode='too-heavy';
  r=await call('/ai/routine-draft','POST',{preferences:{...prefs,preferences:'heavy'},consent:true});
- assert.equal(r.data.draft.result.days[0].exercises[0].targetWeightKg,null);mode='ok';
+ assert.equal(r.status,502);mode='ok';
 });
 test('timed, cardio and rest targets survive editable draft saving and workout start; saving is idempotent',async()=>{
  mode='mixed';
@@ -201,7 +203,7 @@ test('concurrent users cannot spend the same remaining monthly allowance',async(
 });
 
 
-test('Full Gym with the complete catalog and 31 detailed workouts preserves all context',async()=>{
+test('Full Gym with 530 exercises and 31 workouts sends a bounded training summary',async()=>{
  const existing=new Set((await Exercise.find({owner:null}).select('slug').lean()).map(e=>e.slug));
  await Exercise.insertMany(CATALOG.filter(e=>!existing.has(e.slug)));
  const history=Array.from({length:30},(_,i)=>({user:user._id,name:'Training '+i,date:todayFor('America/Toronto'),status:'completed',bodyWeightKg:80,startedAt:new Date(Date.now()-3600000),endedAt:new Date(),
@@ -212,12 +214,10 @@ test('Full Gym with the complete catalog and 31 detailed workouts preserves all 
  const r=await call('/ai/routine-draft','POST',{preferences:{...prefs,preferences:'full-gym-large-history'},consent:true});
  assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(calls,before+1);
  const context=JSON.parse(lastBody.input[1].content);
- assert.ok(Buffer.byteLength(JSON.stringify(lastBody),'utf8')>250000,'Fixture must exceed the former limit');
- assert.equal(context.history.length,31);
- assert.ok(context.candidates.length>=CATALOG.length);
- assert.equal(context.history.filter(s=>s.entries.length===8).length,30);
- assert.equal(context.history.find(s=>s.entries.length===8).entries[0].sets.length,4);
- assert.ok(context.candidates.every(e=>e.exerciseId&&e.name));
+ assert.ok(Buffer.byteLength(JSON.stringify(lastBody),'utf8')<15000);
+ assert.equal(context.completedSessions,31);
+ assert.equal(context.candidates,undefined);
+ assert.equal(context.recentExercises.length,1);
  const ledger=await models.AiBudget.findOne();assert.ok(Math.abs(ledger.reservedUsd)<1e-8);
 });
 
@@ -235,4 +235,61 @@ test('large-request reservations and usage reconciliation include Sol long-conte
  assert.equal(estimatedCost('gpt-6.1-sol',272000,8000),0.76);
  assert.equal(estimatedCost('gpt-6.1-sol',300000,8000),1.62);
  assert.equal(estimatedCost('gpt-6-luna',300000,8000),0.0415);
+});
+
+test('regular generation is blocked, Pro enforces rolling limits and hidden answers are retained privately', async () => {
+ const regular=await User.create({name:'Regular',email:'regular@example.test',passwordHash:'test'});
+ const body={consent:true,preferences:{...prefs,preferences:'limit test'}};
+ const gen=()=>call('/ai/routine-draft','POST',body,regular);
+ const before=calls;
+ assert.equal((await gen()).status,403);assert.equal(calls,before);
+ await User.updateOne({_id:regular._id},{$set:{aiTier:'pro'}});
+ const created=await gen();assert.equal(created.status,200);
+ const draft=created.data.draft;
+ const record=(at)=>({user:regular._id,task:'question',model:'test',status:'completed',createdAt:at});
+ await models.AiUsage.insertMany(Array.from({length:3},()=>record(new Date())));
+ assert.equal((await gen()).data.cached,true);
+ assert.equal((await call('/ai/drafts/'+draft.id,'DELETE',undefined,other)).status,404);
+ assert.equal((await call('/ai/drafts/'+draft.id,'DELETE',undefined,regular)).status,200);
+ assert.ok((await models.AiDraft.findById(draft.id)).hiddenAt);
+ assert.deepEqual((await call('/ai/bootstrap','GET',undefined,regular)).data.drafts,[]);
+ assert.equal((await call('/ai/drafts/'+draft.id+'/save','POST',{},regular)).status,404);
+ assert.equal((await gen()).status,429);assert.equal(calls,before+1);
+ await models.AiUsage.deleteMany({user:regular._id});
+ await models.AiUsage.insertMany(Array.from({length:25},()=>record(new Date(Date.now()-2*86400000))));
+ assert.equal((await gen()).status,429);assert.equal(calls,before+1);
+ await User.updateOne({_id:regular._id},{$set:{aiTier:'dev'}});
+ assert.equal((await gen()).status,200);assert.equal(calls,before+2);
+});
+
+test('only one of two simultaneous Pro requests can take the final daily slot', async () => {
+ const pro=await User.create({name:'Concurrent',email:'concurrent@test.invalid',aiTier:'pro',passwordHash:'test'});
+ await models.AiUsage.insertMany(Array.from({length:3},()=>({user:pro._id,status:'completed'})));
+ const gen=label=>call('/ai/routine-draft','POST',{consent:true,preferences:{...prefs,preferences:label}},pro);
+ const count=calls;
+ mode='wait';waiter=null;
+ const first=gen('first');
+ try {
+   for(let i=0;i<100&&!waiter;i++)await new Promise(r=>setTimeout(r,10));
+   assert.ok(waiter);
+   assert.equal((await gen('second')).status,409);
+ } finally { mode='ok';waiter?.(); }
+ assert.equal((await first).status,200);
+ assert.equal((await gen('second')).status,429);
+ assert.equal(calls,count+1);
+});
+
+test('matching checks abbreviations, equipment, variants and ambiguous custom names', () => {
+ const common={type:'strength',isTimed:false,equipment:'Dumbbell and bench',equipmentTags:['dumbbell','bench']};
+ const incline={...common,name:'Dumbbell Incline Bench Press',exerciseId:'incline'};
+ const flat={...common,name:'Dumbbell Flat Bench Press',exerciseId:'flat'};
+ const match=(name,equipment,variant='',candidates=[incline,flat])=>{
+   const plan={days:[{exercises:[{name,equipment,variant,kind:'strength',targetReps:8}]}]};
+   return resolveSuggestions(plan,{candidates,preferences:{breakWeeks:0},today:'2026-11-10',history:[]}).days[0].exercises[0];
+ };
+ assert.equal(match('Incline DB Press','dumbbell').exerciseId,'incline');
+ assert.equal(match('Incline DB Press','barbell').exerciseId,'');
+ assert.equal(match('Incline DB Press','dumbbell','flat').exerciseId,'');
+ assert.deepEqual(match('DB press','dumbbell').match.options.sort(),['flat','incline']);
+ assert.equal(match(incline.name,'dumbbell','',[incline,{...incline,exerciseId:'custom'}]).exerciseId,'');
 });

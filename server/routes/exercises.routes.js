@@ -38,6 +38,7 @@ router.post('/', async (req, res) => {
     howToUrl: howToUrlFor(name.trim()),
     met: number(met ?? (type === 'cardio' ? 7 : 5), 'MET', 0.1, 30),
     defaultRestSec: number(defaultRestSec ?? 90, 'Rest seconds', 0, 3600),
+    isTimed:type!=='cardio' && req.body.isTimed===true,
     isBarbell: !!isBarbell,
     barWeightKg: isBarbell ? 20 : 0,
     isDistanceBased: !!isDistanceBased,

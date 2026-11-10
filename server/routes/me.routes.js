@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { AiDraft, AiPreferences, AiUsage, AiLock } from '../ai/models.js';
+import { deleteAccount } from '../delete-account.js';
+import { AiDraft, AiPreferences } from '../ai/models.js';
 import bcrypt from 'bcryptjs';
-import { Exercise, Routine, Session, User, WeekPlan } from '../models.js';
+import { Exercise, Routine, Session, WeekPlan } from '../models.js';
 import { text, number, dateISO, todayFor, timeZone, array, id } from '../validation.js';
 import { requireAuth } from '../auth.js';
 
@@ -64,7 +65,7 @@ router.get('/export', async (req, res) => {
   res.json({
     weekPlans: await WeekPlan.find({ user: req.user._id }).select('week slots -_id').lean(),
     aiPreferences: (await AiPreferences.findOne({ user: req.user._id }).lean())?.preferences ?? null,
-    aiSuggestions: await AiDraft.find({ user: req.user._id }).select('task result createdAt').lean(),
+    aiSuggestions: await AiDraft.find({ user: req.user._id, hiddenAt: null }).select('task result createdAt').lean(),
     exportedAt: new Date().toISOString(),
     profile: req.user.toPublic(),
     customExercises: custom,
@@ -130,17 +131,7 @@ router.post('/delete-account', async (req, res) => {
   const ok = await bcrypt.compare(req.body?.password ?? '', req.user.passwordHash);
   if (!ok) return res.status(403).json({ error: 'Password is incorrect' });
 
-  await Promise.all([
-    WeekPlan.deleteMany({ user: req.user._id }),
-    AiDraft.deleteMany({ user: req.user._id }),
-    AiPreferences.deleteMany({ user: req.user._id }),
-    AiUsage.deleteMany({ user: req.user._id }),
-    AiLock.deleteOne({ _id: String(req.user._id) }),
-    Session.deleteMany({ user: req.user._id }),
-    Routine.deleteMany({ user: req.user._id }),
-    Exercise.deleteMany({ owner: req.user._id }),
-  ]);
-  await User.deleteOne({ _id: req.user._id });
+  await deleteAccount(req.user);
   res.clearCookie('gt_token', { path: '/' });
   res.json({ ok: true });
 });

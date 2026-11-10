@@ -34,7 +34,7 @@ before(async () => {
   process.env.JWT_SECRET = 'isolated-coaching-tests';
   db = await MongoMemoryServer.create(); await mongoose.connect(db.getUri());
   await Promise.all(Object.values(mongoose.models).map(m => m.init()));
-  [user, other] = await User.create(['one', 'two'].map(name => ({ name, email: name + '@test.invalid', passwordHash: 'test', weighIns: [{ date: today, kg: 80 }] })));
+  [user, other] = await User.create(['one', 'two'].map(name => ({ name, aiTier:'dev', email: name + '@test.invalid', passwordHash: 'test', weighIns: [{ date: today, kg: 80 }] })));
   lift = await Exercise.create({ name: 'Bench', slug: 'bench', category: 'chest', type: 'strength' });
   routine = await Routine.create({ name: 'Push', user: user._id, exercises: [{ exercise: lift._id, targetSets: 2, targetReps: 8, repCeiling: 10, targetWeightKg: 50, incrementKg: 2.5 }] });
   await Session.insertMany([1,2].map(i => ({ user: user._id, routine: routine._id, date: today, name: 'Push '+i, status: 'completed', bodyWeightKg: 80,

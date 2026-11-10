@@ -37,6 +37,7 @@ export async function buildContext(user, zone, preferences, task, sessionId) {
   const routines = task==='routine' ? await Routine.find({user:user._id,archived:false}).select('name exercises note').limit(30).lean():[];
   return {
     today,timeZone:zone,preferences,
+    excludedNames:(preferences?.excludedExerciseIds ?? []).map(id => byId.get(id)?.name).filter(Boolean),
     historyWindow:{from:shiftDay(today,-84),to:today,maxSessions:120},
     history:selected, weekly:{from:shiftDay(today,-6),to:today,current:aggregate(current),previous:aggregate(previous),target:user.weeklyTarget},
     routines:routines.map(r=>({name:r.name,note:r.note,exercises:r.exercises.map(e=>({...e,exercise:String(e.exercise)}))})),
@@ -57,9 +58,11 @@ export function checkRoutine(result,context) {
     const seen=new Set();
     let seconds=300; // warm-up allowance + transition allowance per exercise
     for (const item of day.exercises) {
-      const ex=map.get(item.exerciseId);
-      if (!ex || seen.has(item.exerciseId)) throw new Error('The routine included an unavailable or repeated exercise.');
-      seen.add(item.exerciseId);
+      const pending = !item.exerciseId && item.match;
+      const ex = pending ? { type: pending.kind === 'cardio' ? 'cardio' : 'strength', isTimed: pending.kind === 'timed' } : map.get(item.exerciseId);
+      const identity = item.exerciseId || pending?.name.trim().toLowerCase();
+      if (!ex || seen.has(identity)) throw new Error('The routine included an unavailable or repeated exercise.');
+      seen.add(identity);
       if (ex.type==='cardio') {
         if (!(item.targetCardioMin>0) || item.targetDurationSec!==null || item.targetReps!==0 || item.targetWeightKg!==null) throw new Error('Invalid cardio target.');
         seconds+=item.targetCardioMin*60;
